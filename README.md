@@ -84,11 +84,11 @@ notes
 performance
 -----------
 ```
-without any wrappers or testers: 22547276/s
-lock_tracer                    :   301873/s
-lock_tracer without backtrace' :  2803110/s  (comment out the WITH_BACKTRACE line in lock_trace.cpp)
-valgrind with drd              :   113432/s
-valgrind with helgrind         :    89817/s
+without any wrappers or testers: 51496k/s
+lock_tracer                    :   373k/s
+lock_tracer without backtrace' :  7320k/s  (comment out the WITH_BACKTRACE line in lock_trace.cpp)
+valgrind with drd              :   113k/s
+valgrind with helgrind         :    89k/s
 ```
 
 Note: valgrind affects *all* performance while lock_tracer only

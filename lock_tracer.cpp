@@ -20,7 +20,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
-// YOU MAY NEED TO CHANGE THIS
+//// YOU MAY NEED TO CHANGE THIS ////
 
 #define WITH_BACKTRACE
 
@@ -36,7 +36,7 @@
 
 #define STORE_THREAD_NAME
 
-//////////////////////////////
+/////////////////////////////////////
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)

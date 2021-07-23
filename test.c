@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-#define TIME 200000
+#define TIME 2000000
 
 uint64_t get_us()
 {
