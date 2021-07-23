@@ -53,11 +53,11 @@ if output_type == 'html':
 
     print('<ul>')
     print('<li><a href="#double">double locks/unlocks</a>')
-    print('<li><a href="#sumback">summary backtraces</a>')
-    print('<li><a href="#sumsym">summary symbols</a>')
     print('<li><a href="#slmut">still locked - grouped by mutex</a>')
     print('<li><a href="#sltid">still locked - grouped by TID</a>')
     print('<li><a href="#durations">locking durations</a>')
+    print('<li><a href="#sumback">summary backtraces</a>')
+    print('<li><a href="#sumsym">summary symbols</a>')
     print('</ul>')
 
 else:
@@ -283,62 +283,6 @@ else:
     print('')
     print('')
 
-if output_type == 'html':
-    print('<a name="sumback"></a><h2>SUMMARY BACKTRACES</h2>')
-else:
-    print(' *** SUMMARY BACKTRACES ***')
-    print('')
-
-for c in resolver_cache:
-    if output_type == 'html':
-        print('<h3>%s</h3>' % c.replace(',', ', '))
-
-    else:
-        print(c)
-
-    dump_stacktrace(resolver_cache[c], output_type)
-
-    if output_type != 'html':
-        print('')
-
-if output_type != 'html':
-    print('')
-    print('')
-
-if output_type == 'html':
-    print('<a name="sumsym"></a><h2>SUMMARY SYMBOLS</h2>')
-    print('<table border=1>')
-    print('<tr><th>path</th><th>line number</th><th></th></tr>')
-else:
-    print(' *** SUMMARY SYMBOLS ***')
-    print('')
-
-symbols = set()
-
-for c in resolver_cache:
-    for s in resolver_cache[c]:
-        if not s in symbols:
-            symbols.add(s)
-
-for s in sorted(symbols):
-    if output_type == 'html':
-        parts = s.split(':')
-
-        while len(parts) < 3:
-            parts.append('-')
-
-        print('<tr><td>%s</td><td>%s</td><td>%s</td></tr>' % (parts[0], parts[1], parts[2]))
-
-    else:
-        print(s)
-        print('')
-
-if output_type == 'html':
-    print('</table>')
-
-else:
-    print('')
-
 def my_ctime(ts):
     dt = time.localtime(ts // 1000000)
 
@@ -496,6 +440,62 @@ for d in durations:
 
 if output_type != 'html':
     print('')
+    print('')
+
+if output_type == 'html':
+    print('<a name="sumback"></a><h2>SUMMARY BACKTRACES</h2>')
+else:
+    print(' *** SUMMARY BACKTRACES ***')
+    print('')
+
+for c in resolver_cache:
+    if output_type == 'html':
+        print('<h3>%s</h3>' % c.replace(',', ', '))
+
+    else:
+        print(c)
+
+    dump_stacktrace(resolver_cache[c], output_type)
+
+    if output_type != 'html':
+        print('')
+
+if output_type != 'html':
+    print('')
+    print('')
+
+if output_type == 'html':
+    print('<a name="sumsym"></a><h2>SUMMARY SYMBOLS</h2>')
+    print('<table border=1>')
+    print('<tr><th>path</th><th>line number</th><th></th></tr>')
+else:
+    print(' *** SUMMARY SYMBOLS ***')
+    print('')
+
+symbols = set()
+
+for c in resolver_cache:
+    for s in resolver_cache[c]:
+        if not s in symbols:
+            symbols.add(s)
+
+for s in sorted(symbols):
+    if output_type == 'html':
+        parts = s.split(':')
+
+        while len(parts) < 3:
+            parts.append('-')
+
+        print('<tr><td>%s</td><td>%s</td><td>%s</td></tr>' % (parts[0], parts[1], parts[2]))
+
+    else:
+        print(s)
+        print('')
+
+if output_type == 'html':
+    print('</table>')
+
+else:
     print('')
 
 if output_type == 'html':
