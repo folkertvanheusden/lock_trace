@@ -78,9 +78,6 @@ org_pthread_exit org_pthread_exit_h = nullptr;
 typedef int (* org_pthread_setname_np)(pthread_t thread, const char *name);
 org_pthread_setname_np org_pthread_setname_np_h = nullptr;
 
-typedef void (* org_exit)(int status);
-org_exit org_exit_h = nullptr;
-
 std::map<int, std::string> *tid_names = nullptr;
 
 int _gettid()
@@ -92,7 +89,9 @@ thread_local bool prevent_backtrace = false;
 
 void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 {
-	if (!items) {  // how can this happen?!
+	if (!items) {
+		// when a constructor of some other library already invokes e.g. pthread_mutex_lock
+		// before this wrapper has been fully initialized
 		static bool error_shown = false;
 
 		if (!error_shown) {
@@ -140,16 +139,23 @@ void pthread_exit(void *retval)
 {
 	prevent_backtrace = true;
 
-	uint64_t cur_idx = idx++;
+	if (items) {
+		uint64_t cur_idx = idx++;
 
-	if (cur_idx < BUFFER_SIZE) {
-		items[cur_idx].lock = nullptr;
-		items[cur_idx].tid = _gettid();
-		items[cur_idx].la = a_thread_clean;
+		if (cur_idx < BUFFER_SIZE) {
+			items[cur_idx].lock = nullptr;
+			items[cur_idx].tid = _gettid();
+			items[cur_idx].la = a_thread_clean;
 #ifdef WITH_TIMESTAMP
-		items[cur_idx].timestamp = get_us();
+			items[cur_idx].timestamp = get_us();
 #endif
+		}
 	}
+
+#ifdef CAPTURE_PTHREAD_EXIT
+	if (!org_pthread_exit_h)
+		org_pthread_exit_h = (org_pthread_exit)dlsym(RTLD_NEXT, "pthread_exit");
+#endif
 
 	(*org_pthread_exit_h)(retval);
 }
@@ -159,11 +165,17 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 {
 	store_mutex_info(mutex, a_lock);
 
+	if (!org_pthread_mutex_lock_h)
+		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+
 	return (*org_pthread_mutex_lock_h)(mutex);
 }
 
 int pthread_mutex_trylock(pthread_mutex_t *mutex)
 {
+	if (!org_pthread_mutex_lock_h)
+		org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+
 	// NOTE! different order of calling store_mutex_info! FIXME
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
@@ -177,6 +189,9 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 {
 	store_mutex_info(mutex, a_unlock);
 
+	if (!org_pthread_mutex_unlock_h)
+		org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+
 	return (*org_pthread_mutex_unlock_h)(mutex);
 }
 
@@ -184,6 +199,9 @@ int pthread_setname_np(pthread_t thread, const char *name)
 {
 	if (tid_names && name)
 		tid_names->emplace(_gettid(), name);
+
+	if (!org_pthread_setname_np_h)
+		org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
 
 	return (*org_pthread_setname_np_h)(thread, name);
 }
@@ -194,16 +212,7 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 	items = new lock_trace_item_t[16777216];
 
-	org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
-	org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
-	org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-
-#ifdef CAPTURE_PTHREAD_EXIT
-	org_pthread_exit_h = (org_pthread_exit)dlsym(RTLD_NEXT, "pthread_exit");
-#endif
-	org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
-
-	org_exit_h = (org_exit)dlsym(RTLD_NEXT, "exit");
+	tid_names = new std::map<int, std::string>();
 
 	// FIXME intercept:
 	// 	int pthread_mutex_trylock(pthread_mutex_t *mutex);
@@ -211,65 +220,67 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	//	int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
-
-	tid_names = new std::map<int, std::string>();
 }
 
 void exit(int status)
 {
 	fprintf(stderr, "Lock tracer terminating... (path: %s)\n", get_current_dir_name());
 
-	FILE *fh = fopen("dump.dat", "w");
+	if (!items)
+		fprintf(stderr, "No items recorded yet\n");
+	else {
+		FILE *fh = fopen("dump.dat", "w");
 
-	if (!fh)
-		fh = stderr;
+		if (!fh)
+			fh = stderr;
 
-	fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\n");
+		fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\n");
 
-	char caller_str[512];
+		char caller_str[512];
 
-	if (idx > BUFFER_SIZE)
-		idx = BUFFER_SIZE;
+		if (idx > BUFFER_SIZE)
+			idx = BUFFER_SIZE;
 
-	for(uint64_t i = 0; i<idx; i++) {
-		caller_str[0] = 0x00;
+		for(uint64_t i = 0; i<idx; i++) {
+			caller_str[0] = 0x00;
 
 #ifndef WITH_TIMESTAMP
-		items[i].timestamp = 0;
+			items[i].timestamp = 0;
 #endif
 
 #ifdef WITH_BACKTRACE
-		for(int j=0; j<CALLER_DEPTH; j++)
-			sprintf(&caller_str[strlen(caller_str)], "%p,", items[i].caller[j]);
+			for(int j=0; j<CALLER_DEPTH; j++)
+				sprintf(&caller_str[strlen(caller_str)], "%p,", items[i].caller[j]);
 #endif
 
-		const char *action_name = "?";
+			const char *action_name = "?";
 
-		if (items[i].la == a_lock)
-			action_name = "lock";
-		else if (items[i].la == a_unlock)
-			action_name = "unlock";
-		else if (items[i].la == a_thread_clean)
-			action_name = "tclean";
+			if (items[i].la == a_lock)
+				action_name = "lock";
+			else if (items[i].la == a_unlock)
+				action_name = "unlock";
+			else if (items[i].la == a_thread_clean)
+				action_name = "tclean";
 
 #ifdef STORE_THREAD_NAME
-		char *name = items[i].thread_name;
-		int len = strlen(name);
+			char *name = items[i].thread_name;
+			int len = strlen(name);
 
-		for(int i=0; i<len; i++) {
-			if (name[i] < 33 || name[i] > 126)
-				name[i] = '_';
-		}
+			for(int i=0; i<len; i++) {
+				if (name[i] < 33 || name[i] > 126)
+					name[i] = '_';
+			}
 #else
-		char name[16];
-		snprintf(name, sizeof name, "%d", items[i].tid);
+			char name[16];
+			snprintf(name, sizeof name, "%d", items[i].tid);
 #endif
 
-		fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\t%s\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp, name);
-	}
+			fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\t%s\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp, name);
+		}
 
-	if (fh != stderr)
-		fclose(fh);
+		if (fh != stderr)
+			fclose(fh);
+	}
 
 	fflush(nullptr);
 
