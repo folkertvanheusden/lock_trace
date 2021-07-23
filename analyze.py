@@ -223,7 +223,7 @@ for r in records:
 
         if r[1] in by_who_m:
             if r[2] in by_who_m[r[1]]:
-                took = int(r[5]) - int(by_who_m[r[1]][r[2]][5])  # in us
+                took = int(r[5]) - int(by_who_m[r[1]][r[2]][5])  # in s
 
                 if not r[1] in durations:
                     durations[r[1]] = [ 0, 0, 0, r[4], (r[0], r[5]), (0, 0), [] ]  # remember the first callback, usage
@@ -232,7 +232,7 @@ for r in records:
                 durations[r[1]][1] += took  # avg
                 durations[r[1]][2] += took * took  # sd
                 durations[r[1]][5] = (r[0], r[5])  # latest usage
-                durations[r[1]][6].append(took)  # median
+                durations[r[1]][6].append(float(took))  # median
 
                 del by_who_m[r[1]][r[2]]
 
@@ -439,8 +439,8 @@ else:
 
 for d in durations:
     n = durations[d][0]
-    avg = durations[d][1] / n / 1000000.0
-    sd = math.sqrt((durations[d][2] / n / 1000000.0) - math.pow(avg, 2.0))
+    avg = durations[d][1] / n
+    sd = math.sqrt((durations[d][2] / n) - math.pow(avg, 2.0))
 
     if output_type == 'html':
         print('<h3>mutex: %s</h3>' % d)
@@ -450,6 +450,7 @@ for d in durations:
     if output_type == 'html':
         print('<table><tr><th>what</th><th>value</th></tr>')
         print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n)
+        print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d][6]))
         print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
         print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd)
         sorted_list = sorted(durations[d][6])
@@ -458,7 +459,6 @@ for d in durations:
         print('<tr><td>maximum:</td><td>%.6fus</td></tr>' % sorted_list[-1])
         print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][4][1])), durations[d][4][0]))
         print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][5][1])), durations[d][5][0]))
-        # FIXME median
         print('</table>')
 
     else:
