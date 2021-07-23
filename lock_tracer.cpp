@@ -38,6 +38,9 @@
 
 //////////////////////////////
 
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+
 uint64_t get_us()
 {
         struct timeval tv = { 0, 0 };
@@ -91,7 +94,7 @@ thread_local bool prevent_backtrace = false;
 
 void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 {
-	if (!items) {
+	if (unlikely(!items)) {
 		// when a constructor of some other library already invokes e.g. pthread_mutex_lock
 		// before this wrapper has been fully initialized
 		static bool error_shown = false;
@@ -106,11 +109,11 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 
 	uint64_t cur_idx = idx++;
 
-	if (cur_idx < BUFFER_SIZE) {
+	if (likely(cur_idx < BUFFER_SIZE)) {
 #ifdef WITH_BACKTRACE
 		bool get_backtrace = !prevent_backtrace;
 
-		if (get_backtrace) {
+		if (likely(get_backtrace)) {
 #ifdef PREVENT_RECURSION
 			prevent_backtrace = true;
 #endif
@@ -127,7 +130,7 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 		items[cur_idx].timestamp = get_us();
 #endif
 #ifdef STORE_THREAD_NAME
-		if (tid_names) {
+		if (likely(tid_names != nullptr)) {
 			auto it = tid_names->find(items[cur_idx].tid);
 			if (it != tid_names->end())
 				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
@@ -141,10 +144,10 @@ void pthread_exit(void *retval)
 {
 	prevent_backtrace = true;
 
-	if (items) {
+	if (likely(items != nullptr)) {
 		uint64_t cur_idx = idx++;
 
-		if (cur_idx < BUFFER_SIZE) {
+		if (likely(cur_idx < BUFFER_SIZE)) {
 			items[cur_idx].lock = nullptr;
 			items[cur_idx].tid = _gettid();
 			items[cur_idx].la = a_thread_clean;
@@ -155,11 +158,11 @@ void pthread_exit(void *retval)
 	}
 
 #ifdef CAPTURE_PTHREAD_EXIT
-	if (!org_pthread_exit_h)
+	if (unlikely(!org_pthread_exit_h))
 		org_pthread_exit_h = (org_pthread_exit)dlsym(RTLD_NEXT, "pthread_exit");
 #endif
 
-	if (tid_names)
+	if (likely(tid_names != nullptr))
 		tid_names->erase(_gettid());
 
 	(*org_pthread_exit_h)(retval);
@@ -168,12 +171,12 @@ void pthread_exit(void *retval)
 
 int pthread_mutex_lock(pthread_mutex_t *mutex)
 {
-	if (!org_pthread_mutex_lock_h)
+	if (unlikely(!org_pthread_mutex_lock_h))
 		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 
 	int rc = (*org_pthread_mutex_lock_h)(mutex);
 
-	if (rc == 0)
+	if (likely(rc == 0))
 		store_mutex_info(mutex, a_lock);
 	else if (rc == EDEADLK)
 		store_mutex_info(mutex, a_deadlock);
@@ -183,12 +186,12 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 
 int pthread_mutex_trylock(pthread_mutex_t *mutex)
 {
-	if (!org_pthread_mutex_lock_h)
+	if (unlikely(!org_pthread_mutex_lock_h))
 		org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
-	if (rc == 0)
+	if (likely(rc == 0))
 		store_mutex_info(mutex, a_lock);
 	else if (rc == EDEADLK)
 		store_mutex_info(mutex, a_deadlock);
@@ -198,12 +201,12 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 
 int pthread_mutex_unlock(pthread_mutex_t *mutex)
 {
-	if (!org_pthread_mutex_unlock_h)
+	if (unlikely(!org_pthread_mutex_unlock_h))
 		org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 
 	int rc = (*org_pthread_mutex_unlock_h)(mutex);
 
-	if (rc == 0)
+	if (likely(rc == 0))
 		store_mutex_info(mutex, a_unlock);
 	else if (rc == EDEADLK)
 		store_mutex_info(mutex, a_deadlock);
@@ -216,7 +219,7 @@ int pthread_setname_np(pthread_t thread, const char *name)
 	if (tid_names && name)
 		tid_names->emplace(_gettid(), name);
 
-	if (!org_pthread_setname_np_h)
+	if (unlikely(!org_pthread_setname_np_h))
 		org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
 
 	return (*org_pthread_setname_np_h)(thread, name);
