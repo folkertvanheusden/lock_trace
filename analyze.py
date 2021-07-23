@@ -92,6 +92,9 @@ def resolve_addresses(core_file, chain):
 
             symbol = os.popen('%s --core %s %s' % (resolver, core_file, a)).read().rstrip('\n')
 
+            if symbol == '??:0':  # could not resolve
+                symbol = '%s:-1:-1' % a
+
             chain_symbols.append(symbol)
 
         if len(chain_symbols):
