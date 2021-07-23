@@ -454,11 +454,40 @@ for d in durations:
         print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
         print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd)
         sorted_list = sorted(durations[d][6])
-        print('<tr><td>mininum:</td><td>%.6fus</td></tr>' % sorted_list[0])
-        print('<tr><td>median:</td><td>%.6fus</td></tr>' % sorted_list[len(sorted_list) // 2])
-        print('<tr><td>maximum:</td><td>%.6fus</td></tr>' % sorted_list[-1])
+        print('<tr><td>mininum:</td><td>%.2fus</td></tr>' % sorted_list[0])
+        print('<tr><td>median:</td><td>%.2fus</td></tr>' % sorted_list[len(sorted_list) // 2])
+        print('<tr><td>maximum:</td><td>%.2fus</td></tr>' % sorted_list[-1])
         print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][4][1])), durations[d][4][0]))
         print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][5][1])), durations[d][5][0]))
+        print('</table>')
+
+        # this can be implemented way smarter
+        steps = (sorted_list[-1] - sorted_list[0]) / 10
+
+        start = sorted_list[0]
+        next = start + steps
+
+        slots = []
+        while start < sorted_list[-1]:
+            cnt = 0
+
+            for v in sorted_list:
+                if v >= start:
+                    if v >= next:
+                        break
+
+                    cnt += 1
+
+            slots.append((start, cnt))
+
+            start = next
+            next += steps
+
+        print('<p><br></p>')
+
+        print('<table><tr><th>range</th><th>count</th></tr>')
+        for s in slots:
+            print('<tr><td>%.2f ... %.2f</td><td>%d</td></tr>' % (s[0], s[0] + steps, s[1]))
         print('</table>')
 
     else:
