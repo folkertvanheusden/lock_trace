@@ -203,6 +203,7 @@ int pthread_setname_np(pthread_t thread, const char *name)
 	if (!org_pthread_setname_np_h)
 		org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
 
+	// FIXME forget when thread exits
 	return (*org_pthread_setname_np_h)(thread, name);
 }
 
@@ -271,9 +272,13 @@ void exit(int status)
 					name[i] = '_';
 			}
 #else
-			char name[16];
-			snprintf(name, sizeof name, "%d", items[i].tid);
+			char name[16] = { 0 };
 #endif
+
+			if (name[0] == 0x00) {
+				name[0] = '?';
+				name[1] = 0x00;
+			}
 
 			fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\t%s\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp, name);
 		}
