@@ -183,7 +183,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 int pthread_setname_np(pthread_t thread, const char *name)
 {
 	if (tid_names && name)
-		tid_names->emplace(gettid(), name);
+		tid_names->emplace(_gettid(), name);
 
 	return (*org_pthread_setname_np_h)(thread, name);
 }
