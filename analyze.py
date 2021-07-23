@@ -53,6 +53,7 @@ if output_type == 'html':
 
     print('<ul>')
     print('<li><a href="#double">double locks/unlocks</a>')
+    print('<li><a href="#deadlocks">deadlocks</a>')
     print('<li><a href="#slmut">still locked - grouped by mutex</a>')
     print('<li><a href="#sltid">still locked - grouped by TID</a>')
     print('<li><a href="#durations">locking durations</a>')
@@ -161,6 +162,7 @@ before = dict()
 by_who_m = dict()  # on mutex
 by_who_t = dict()  # on tid
 durations = dict()
+deadlocks = []
 
 if output_type == 'html':
     print('<a name="double"></a><h2>DOUBLE LOCKS/UNLOCKS</h2>')
@@ -272,6 +274,9 @@ for r in records:
             before[p] = state[p]
             del state[p]
 
+    elif r[3] == 'deadlock':  # deadlock
+        deadlocks.append(r)
+
     else:
         print('Unknown action: %s' % r[4])
         sys.exit(1)
@@ -302,6 +307,45 @@ def pp_record(r, ot):
     return rc
 
 if output_type == 'html':
+    print('<a name="deadlocks"></a><h2>DEADLOCKS</h2>')
+    print('<ul>')
+
+else:
+    print(' *** DEADLOCKS ***')
+    print('')
+
+any_dl = False
+
+for d in deadlocks:
+    print(pp_record(deadlocks[d], output_type))
+
+    if output_type == 'html':
+        print('<br>')
+
+    else:
+        print('')
+
+    dump_stacktrace(resolve_addresses(core_file, deadlocks[d][4]), output_type)
+
+    if output_type == 'html':
+        print('<br>')
+
+    else:
+        print('')
+        print('')
+
+    any_dl = True
+
+if output_type == 'html':
+    if not any_dl:
+        print('<li>---')
+
+    print('</ul>')
+
+else:
+    print('')
+
+if output_type == 'html':
     print('<a name="slmut"></a><h2>STILL LOCKED (grouped by mutex)</h2>')
     print('<ul>')
 
@@ -317,13 +361,18 @@ for bw in by_who_m:
             r = by_who_m[bw][ri]
 
             print(pp_record(r, output_type))
+
             if output_type == 'html':
                 print('<br>')
+
             else:
                 print('')
+
             dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
+
             if output_type == 'html':
                 print('<br>')
+
             else:
                 print('')
                 print('')
@@ -355,13 +404,18 @@ for bw in by_who_t:
             r = by_who_t[bw][ri]
 
             print(pp_record(r, output_type))
+
             if output_type == 'html':
                 print('<br>')
+
             else:
                 print('')
+
             dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
+
             if output_type == 'html':
                 print('<br>')
+
             else:
                 print('')
                 print('')

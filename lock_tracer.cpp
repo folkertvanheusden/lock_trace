@@ -1,7 +1,9 @@
 // (C) 2021 by folkert@vanheusden.com
 // released under GPL v3.0
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <assert.h>
 #include <atomic>
 #include <dlfcn.h>
@@ -44,7 +46,7 @@ uint64_t get_us()
         return tv.tv_sec * 1000l * 1000l + tv.tv_usec;
 }
 
-typedef enum { a_lock, a_unlock, a_thread_clean } lock_action_t;
+typedef enum { a_lock, a_unlock, a_thread_clean, a_deadlock } lock_action_t;
 
 typedef struct {
 #ifdef WITH_BACKTRACE
@@ -157,18 +159,26 @@ void pthread_exit(void *retval)
 		org_pthread_exit_h = (org_pthread_exit)dlsym(RTLD_NEXT, "pthread_exit");
 #endif
 
+	if (tid_names)
+		tid_names->erase(_gettid());
+
 	(*org_pthread_exit_h)(retval);
 }
 #endif
 
 int pthread_mutex_lock(pthread_mutex_t *mutex)
 {
-	store_mutex_info(mutex, a_lock);
-
 	if (!org_pthread_mutex_lock_h)
 		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 
-	return (*org_pthread_mutex_lock_h)(mutex);
+	int rc = (*org_pthread_mutex_lock_h)(mutex);
+
+	if (rc == 0)
+		store_mutex_info(mutex, a_lock);
+	else if (rc == EDEADLK)
+		store_mutex_info(mutex, a_deadlock);
+
+	return rc;
 }
 
 int pthread_mutex_trylock(pthread_mutex_t *mutex)
@@ -176,23 +186,29 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 	if (!org_pthread_mutex_lock_h)
 		org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
-	// NOTE! different order of calling store_mutex_info! FIXME
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
-	if (rc == 0)	
+	if (rc == 0)
 		store_mutex_info(mutex, a_lock);
+	else if (rc == EDEADLK)
+		store_mutex_info(mutex, a_deadlock);
 
 	return rc;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *mutex)
 {
-	store_mutex_info(mutex, a_unlock);
-
 	if (!org_pthread_mutex_unlock_h)
 		org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 
-	return (*org_pthread_mutex_unlock_h)(mutex);
+	int rc = (*org_pthread_mutex_unlock_h)(mutex);
+
+	if (rc == 0)
+		store_mutex_info(mutex, a_unlock);
+	else if (rc == EDEADLK)
+		store_mutex_info(mutex, a_deadlock);
+
+	return rc;
 }
 
 int pthread_setname_np(pthread_t thread, const char *name)
@@ -203,7 +219,6 @@ int pthread_setname_np(pthread_t thread, const char *name)
 	if (!org_pthread_setname_np_h)
 		org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
 
-	// FIXME forget when thread exits
 	return (*org_pthread_setname_np_h)(thread, name);
 }
 
@@ -262,6 +277,8 @@ void exit(int status)
 				action_name = "unlock";
 			else if (items[i].la == a_thread_clean)
 				action_name = "tclean";
+			else if (items[i].la == a_deadlock)
+				action_name = "deadlock";
 
 #ifdef STORE_THREAD_NAME
 			char *name = items[i].thread_name;
