@@ -16,21 +16,27 @@ analyze.py needs the '/usr/bin/eu-addr2line' program from the
 
 building
 --------
-  mkdir build
-  cd build
-  cmake ..
-  make
+```
+mkdir build
+cd build
+cmake ..
+make
+```
 
 
 usage
 -----
 Make sure your system can create core files:
 
-  ulimit -c unlimited
+```
+ulimit -c unlimited
+```
 
 Then:
 
-  LD_PRELOAD=/path/to/liblock_tracer.so ./my_program
+```
+LD_PRELOAD=/path/to/liblock_tracer.so ./my_program
+```
 
 It should terminate with a core-dump.
 
@@ -43,20 +49,13 @@ finding information about mutexes.
 
 
 Show analysis:
-  ./analyze.py /path/to/core < dump.dat
-
-That may display something like:
 
 ```
-  Double lock:  50138 0x7fff10927b20 426911 /home/folkert/Projects/lock_tracer/lock_tracer.cpp:82:13,/home/folkert/Projects/lock_tracer/lock_tracer.cpp:101:36,/home/folkert/Projects/lock_tracer/test.c:48:2,../csu/libc-start.c:332:16,??:0
-
-
-  Invalid unlock:  50140 0x7fff10927b20 426911 /home/folkert/Projects/lock_tracer/lock_tracer.cpp:82:13,/home/folkert/Projects/lock_tracer/lock_tracer.cpp:108:38,/home/folkert/Projects/lock_tracer/test.c:50:2,../csu/libc-start.c:332:16,??:0
+./analyze.py -c core -t dump.dat -o html > report.html
 ```
 
-* 50138 / 50140 is the invocation number
-* 0x7fff10927b20 is the address of the mutex
-* 426911 is the TID (thread id)
+This will generate an html-file that can be opened with a regular
+web-browser.
 
 
 notes

@@ -196,6 +196,9 @@ void exit(int status)
 
 	char caller_str[512];
 
+	if (idx > BUFFER_SIZE)
+		idx = BUFFER_SIZE;
+
 	for(uint64_t i = 0; i<idx; i++) {
 		caller_str[0] = 0x00;
 
