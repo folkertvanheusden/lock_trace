@@ -6,10 +6,12 @@
 #include <atomic>
 #include <dlfcn.h>
 #include <execinfo.h>
+#include <map>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string>
 #include <string.h>
 #include <unistd.h>
 #include <sys/syscall.h>
@@ -29,6 +31,8 @@
 #define PREVENT_RECURSION  // required at least on RHEL and Fedora
 
 #define CAPTURE_PTHREAD_EXIT
+
+#define STORE_THREAD_NAME
 
 //////////////////////////////
 
@@ -50,6 +54,10 @@ typedef struct {
 	int tid;
 	lock_action_t la; 
 	uint64_t timestamp;
+#ifdef STORE_THREAD_NAME
+	// the one in linux is said to be max. 16 characters including 0x00 (pthread_setname_np)
+	char thread_name[16];
+#endif
 } lock_trace_item_t;
 
 std::atomic_uint64_t idx { 0 };
@@ -67,8 +75,13 @@ org_pthread_mutex_unlock org_pthread_mutex_unlock_h = nullptr;
 typedef int (* org_pthread_exit)(void *retval);
 org_pthread_exit org_pthread_exit_h = nullptr;
 
+typedef int (* org_pthread_setname_np)(pthread_t thread, const char *name);
+org_pthread_setname_np org_pthread_setname_np_h = nullptr;
+
 typedef void (* org_exit)(int status);
 org_exit org_exit_h = nullptr;
+
+std::map<int, std::string> *tid_names = nullptr;
 
 int _gettid()
 {
@@ -111,6 +124,13 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 		items[cur_idx].la = la;
 #ifdef WITH_TIMESTAMP
 		items[cur_idx].timestamp = get_us();
+#endif
+#ifdef STORE_THREAD_NAME
+		if (tid_names) {
+			auto it = tid_names->find(items[cur_idx].tid);
+			if (it != tid_names->end())
+				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+		}
 #endif
 	}
 }
@@ -160,6 +180,14 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 	return (*org_pthread_mutex_unlock_h)(mutex);
 }
 
+int pthread_setname_np(pthread_t thread, const char *name)
+{
+	if (tid_names && name)
+		tid_names->emplace(gettid(), name);
+
+	return (*org_pthread_setname_np_h)(thread, name);
+}
+
 void __attribute__ ((constructor)) start_lock_tracing()
 {
 	fprintf(stderr, "Lock tracer starting... (structure size: %zu bytes)\n", sizeof(lock_trace_item_t));
@@ -169,9 +197,11 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 	org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 	org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+
 #ifdef CAPTURE_PTHREAD_EXIT
 	org_pthread_exit_h = (org_pthread_exit)dlsym(RTLD_NEXT, "pthread_exit");
 #endif
+	org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
 
 	org_exit_h = (org_exit)dlsym(RTLD_NEXT, "exit");
 
@@ -181,6 +211,8 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	//	int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
+
+	tid_names = new std::map<int, std::string>();
 }
 
 void exit(int status)
@@ -220,7 +252,20 @@ void exit(int status)
 		else if (items[i].la == a_thread_clean)
 			action_name = "tclean";
 
-		fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp);
+#ifdef STORE_THREAD_NAME
+		char *name = items[i].thread_name;
+		int len = strlen(name);
+
+		for(int i=0; i<len; i++) {
+			if (name[i] < 33 || name[i] > 126)
+				name[i] = '_';
+		}
+#else
+		char name[16];
+		snprintf(name, sizeof name, "%d", items[i].tid);
+#endif
+
+		fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\t%s\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp, name);
 	}
 
 	if (fh != stderr)
@@ -230,6 +275,8 @@ void exit(int status)
 
 	delete [] items;
 	idx = 0;
+
+	delete tid_names;
 
 	assert(0);
 }

@@ -150,7 +150,7 @@ if trace_file:
 else:
     lines = sys.stdin.readlines()
 
-# t   mutex   tid action    callers timestamp
+# t   mutex   tid action    callers timestamp   tid-name
 records = [ l.split() for l in lines ]
 
 state = dict()
@@ -185,9 +185,9 @@ for r in records:
                 if output_type == 'html':
                     print('<h3>Double lock</h3>')
                     print('<h4>current</h3>')
-                    print('<p>index: %s, mutex: %s, tid: %s</p>' % (r[0], r[1], r[2]))
+                    print('<p>index: %s, mutex: %s, tid: %s, thread name: %s</p>' % (r[0], r[1], r[2], r[6]))
                 else:
-                    print('Double lock: ', r[0], r[1], r[2])
+                    print('Double lock: ', r[0], r[1], r[2], r[6])
 
                 dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
 
@@ -197,7 +197,7 @@ for r in records:
                 old_r = by_who_t[r[2]][r[1]]
                 if output_type == 'html':
                     print('<h4>previous</h3>')
-                    print('<p>index: %s, tid: %s</p>' % (old_r[0], old_r[2]))
+                    print('<p>index: %s, tid: %s, thread name: %s</p>' % (old_r[0], old_r[2], old_r[6]))
                 else:
                     print('\t', old_r[0], old_r[2])
 
@@ -239,9 +239,9 @@ for r in records:
             else:
                 if output_type == 'html':
                     print('<h3>Invalid unlock</h3>')
-                    print('<p>index: %s, mutex: %s, tid: %s</p>' % (r[0], r[1], r[2]))
+                    print('<p>index: %s, mutex: %s, tid: %s, thread_name: %s</p>' % (r[0], r[1], r[2], r[6]))
                 else:
-                    print('Invalid unlock: ', r[0], r[1], r[2])
+                    print('Invalid unlock: ', r[0], r[1], r[2], r[6])
 
                 dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
 
@@ -347,7 +347,7 @@ def my_ctime(ts):
 def pp_record(r, ot):
     since = my_ctime(int(r[5]))
 
-    rc = 'index: %s, mutex: %s, tid: %s, since: %s (%s)' % (r[0], r[1], r[2], r[5], since)
+    rc = 'index: %s, mutex: %s, tid: %s, name: %s, since: %s (%s)' % (r[0], r[1], r[2], r[6], r[5], since)
 
     if ot == 'html':
         return '<li>%s</li>' % rc
