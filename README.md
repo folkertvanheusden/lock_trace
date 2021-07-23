@@ -60,15 +60,15 @@ web-browser.
 
 notes
 -----
-A single atomic integer is used to index the history-buffer: this
+* A single atomic integer is used to index the history-buffer: this
 will change timing. Also the tracing itself is 'heavy' (cpu-time
 wise). You can reduce that a bit by disabling the backtrace (see
 performance section below).
 
-You may want to look at the 'CHANGE THESE' defines at the top of
+* You may want to look at the 'CHANGE THESE' defines at the top of
 lock_tracer.cpp to suit your needs.
 
-If your program suddenly hangs where it did not before, then
+* If your program suddenly hangs where it did not before, then
 this may be caused by the version of 'backtrace' in libgcc
 using 'pthread_mutex' underneath.
 There are two solutions:
@@ -76,7 +76,7 @@ There are two solutions:
 - uncomment PREVENT_RECURSION which adds an extra check to see
   if there's a loop
 
-Note that capturing pthread_exit may introduce inaccuracies: it
+* Note that capturing pthread_exit may introduce inaccuracies: it
 assumes that the cleaner(s) (see pthread_cleanup_push) will
 unlock any left over locked mutex.
 
