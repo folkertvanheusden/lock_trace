@@ -72,9 +72,9 @@ lock_tracer.cpp to suit your needs.
 this may be caused by the version of 'backtrace' in libgcc
 using 'pthread_mutex' underneath.
 There are two solutions:
-- disable backrace recording (see notes on WITH_BACKTRACE below)
-- uncomment PREVENT_RECURSION which adds an extra check to see
-  if there's a loop
+ * disable backrace recording (see notes on WITH_BACKTRACE below)
+ * uncomment PREVENT_RECURSION which adds an extra check to see
+   if there's a loop
 
 * Note that capturing pthread_exit may introduce inaccuracies: it
 assumes that the cleaner(s) (see pthread_cleanup_push) will
