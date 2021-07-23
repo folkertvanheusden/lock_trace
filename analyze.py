@@ -226,11 +226,13 @@ for r in records:
                 took = int(r[5]) - int(by_who_m[r[1]][r[2]][5])  # in us
 
                 if not r[1] in durations:
-                    durations[r[1]] = [ 0, 0, 0, r[4] ]  # remember the first callback
+                    durations[r[1]] = [ 0, 0, 0, r[4], (r[0], r[5]), (0, 0), [] ]  # remember the first callback, usage
 
                 durations[r[1]][0] += 1  # n
                 durations[r[1]][1] += took  # avg
                 durations[r[1]][2] += took * took  # sd
+                durations[r[1]][5] = (r[0], r[5])  # latest usage
+                durations[r[1]][6].append(took)  # median
 
                 del by_who_m[r[1]][r[2]]
 
@@ -337,10 +339,13 @@ if output_type == 'html':
 else:
     print('')
 
-def pp_record(r, ot):
-    dt = time.localtime(int(r[5]) // 1000000)
+def my_ctime(ts):
+    dt = time.localtime(ts // 1000000)
 
-    since = '%04d-%02d-%02d %02d:%02d:%02d.%06d' % (dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, int(r[5]) % 1000000)
+    return '%04d-%02d-%02d %02d:%02d:%02d.%06d' % (dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, ts % 1000000)
+
+def pp_record(r, ot):
+    since = my_ctime(int(r[5]))
 
     rc = 'index: %s, mutex: %s, tid: %s, since: %s (%s)' % (r[0], r[1], r[2], r[5], since)
 
@@ -447,6 +452,12 @@ for d in durations:
         print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n)
         print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
         print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd)
+        sorted_list = sorted(durations[d][6])
+        print('<tr><td>mininum:</td><td>%.6fus</td></tr>' % sorted_list[0])
+        print('<tr><td>median:</td><td>%.6fus</td></tr>' % sorted_list[len(sorted_list) // 2])
+        print('<tr><td>maximum:</td><td>%.6fus</td></tr>' % sorted_list[-1])
+        print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][4][1])), durations[d][4][0]))
+        print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][5][1])), durations[d][5][0]))
         # FIXME median
         print('</table>')
 
