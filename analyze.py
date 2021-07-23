@@ -130,6 +130,9 @@ def dump_stacktrace(symbols, ot):
         else:
             p_file_name = c_file_name
 
+            while len(pars) < 2:
+                pars.append('-')
+
             if ot == 'html':
                 print('<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>' % (idx, c_file_name, pars[0], pars[1]))
 
@@ -306,10 +309,11 @@ for c in resolver_cache:
 
 for s in sorted(symbols):
     if output_type == 'html':
-        if s == '??:0':
-            s += ':0'
-
         parts = s.split(':')
+
+        while len(parts) < 3:
+            parts.append('-')
+
         print('<tr><td>%s</td><td>%s</td><td>%s</td></tr>' % (parts[0], parts[1], parts[2]))
 
     else:
@@ -423,12 +427,17 @@ for d in durations:
     sd = math.sqrt((durations[d][2] / n / 1000000.0) - math.pow(avg, 2.0))
 
     if output_type == 'html':
-        print('<h3>%s</h3>' % d.replace(',', ', '))
+        print('<h3>mutex: %s</h3>' % d)
     else:
         print(d)
-    dump_stacktrace(resolve_addresses(core_file, durations[d][3]), output_type)
+
     if output_type == 'html':
-        print('<p>n: %d, avg: %.6fus, sd: %.6fus</p>' % (n, avg, sd))
+        print('<table><tr><th>what</th><th>value</th></tr>')
+        print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n)
+        print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
+        print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd)
+        # FIXME median
+        print('</table>')
 
     else:
         print('\tn: %d, avg: %.6fus, sd: %.6fus</p>' % (n, avg, sd))
