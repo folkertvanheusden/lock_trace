@@ -1,0 +1,39 @@
+# (C) 2021 by folkert@vanheusden.com
+# released under GPL v3.0
+
+cmake_minimum_required(VERSION 3.9.4)
+
+project(lock_tracer VERSION 0.1)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+add_definitions("-D_FILE_OFFSET_BITS=64")
+
+set(CMAKE_BUILD_TYPE Debug)
+
+add_compile_options(-Wall -pedantic)
+
+add_library(lock_tracer SHARED
+	lock_tracer.cpp
+	)
+
+add_executable(test
+	test.c
+	)
+
+set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+set(THREADS_PREFER_PTHREAD_FLAG TRUE)
+find_package(Threads)
+target_link_libraries(lock_tracer Threads::Threads)
+
+target_link_libraries(test Threads::Threads)
+
+target_link_libraries(lock_tracer -ldl)
+target_link_libraries(lock_tracer -rdynamic)
+
+target_compile_options(lock_tracer PRIVATE "-Wall")
+target_compile_options(test PRIVATE "-Wall")
+
+set(CMAKE_CXX_FLAGS "-Ofast -ggdb3")
+set(CMAKE_C_FLAGS "-Ofast -ggdb3")
