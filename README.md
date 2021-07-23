@@ -16,10 +16,10 @@ analyze.py needs the '/usr/bin/eu-addr2line' program from the
 
 building
 --------
-mkdir build
-cd build
-cmake ..
-make
+  mkdir build
+  cd build
+  cmake ..
+  make
 
 
 usage
@@ -47,12 +47,12 @@ Show analysis:
 
 That may display something like:
 
----
-Double lock:  50138 0x7fff10927b20 426911 /home/folkert/Projects/lock_tracer/lock_tracer.cpp:82:13,/home/folkert/Projects/lock_tracer/lock_tracer.cpp:101:36,/home/folkert/Projects/lock_tracer/test.c:48:2,../csu/libc-start.c:332:16,??:0
+```
+  Double lock:  50138 0x7fff10927b20 426911 /home/folkert/Projects/lock_tracer/lock_tracer.cpp:82:13,/home/folkert/Projects/lock_tracer/lock_tracer.cpp:101:36,/home/folkert/Projects/lock_tracer/test.c:48:2,../csu/libc-start.c:332:16,??:0
 
 
-Invalid unlock:  50140 0x7fff10927b20 426911 /home/folkert/Projects/lock_tracer/lock_tracer.cpp:82:13,/home/folkert/Projects/lock_tracer/lock_tracer.cpp:108:38,/home/folkert/Projects/lock_tracer/test.c:50:2,../csu/libc-start.c:332:16,??:0
----
+  Invalid unlock:  50140 0x7fff10927b20 426911 /home/folkert/Projects/lock_tracer/lock_tracer.cpp:82:13,/home/folkert/Projects/lock_tracer/lock_tracer.cpp:108:38,/home/folkert/Projects/lock_tracer/test.c:50:2,../csu/libc-start.c:332:16,??:0
+```
 
 * 50138 / 50140 is the invocation number
 * 0x7fff10927b20 is the address of the mutex
