@@ -83,14 +83,16 @@ unlock any left over locked mutex.
 
 performance
 -----------
+```
 without any wrappers or testers: 22547276/s
 lock_tracer                    :   301873/s
 lock_tracer without backtrace' :  2803110/s  (comment out the WITH_BACKTRACE define in lock_trace.cpp)
 valgrind with drd              :   113432/s
 valgrind with helgrind         :    89817/s
+```
 
 Note: valgrind affects *all* performance while lock_tracer only
-the locking/unlocking calls.
+affects the locking/unlocking calls!
 
 
 (C) 2021 by folkert@vanheusden.com
