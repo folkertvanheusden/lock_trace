@@ -403,8 +403,12 @@ void exit(int status)
 
 	fflush(nullptr);
 
+	// make sure no entries are added by threads that are
+	// still running; next statement unallocates the mmap()ed
+	// memory
+	idx = n_records;
+
 	munmap(items, length);
-	idx = 0;
 
 	delete tid_names;
 
