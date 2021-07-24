@@ -52,6 +52,12 @@ uint64_t n_records = 16777216;
 bool limit_reached = false;
 size_t length = 0;
 
+void color(const char *str)
+{
+	if (isatty(fileno(stderr)))
+		fprintf(stderr, "%s", str);
+}
+
 uint64_t get_us()
 {
         struct timeval tv = { 0, 0 };
@@ -116,7 +122,9 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 		static bool error_shown = false;
 
 		if (!error_shown) {
+			color("\033[0;31m");
 			fprintf(stderr, "Buffer not (yet) allocated?!\n");
+			color("\033[0m");
 			error_shown = true;
 		}
 
@@ -159,7 +167,9 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 	}
 	else if (!limit_reached) {
 		limit_reached = true;
+		color("\033[0;31m");
 		fprintf(stderr, "Trace buffer full\n");
+		color("\033[0m");
 	}
 }
 
@@ -181,7 +191,9 @@ void pthread_exit(void *retval)
 		}
 		else if (!limit_reached) {
 			limit_reached = true;
+			color("\033[0;31m");
 			fprintf(stderr, "Trace buffer full\n");
+			color("\033[0m");
 		}
 	}
 
@@ -255,6 +267,8 @@ int pthread_setname_np(pthread_t thread, const char *name)
 
 void __attribute__ ((constructor)) start_lock_tracing()
 {
+	color("\033[0;31m");
+
 	fprintf(stderr, "Lock tracer starting... (structure size: %zu bytes)\n", sizeof(lock_trace_item_t));
 
 	struct rlimit rlim { 0, 0 };
@@ -274,6 +288,7 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 	if (items == MAP_FAILED) {
 		fprintf(stderr, "ERROR: cannot allocate %lu bytes of memory (reduce with the \"TRACE_N_RECORDS\" environment variable): %s\n", length, strerror(errno));
+		color("\033[0m");
 		_exit(1);
 	}
 
@@ -284,6 +299,7 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 	if (!tid_names) {
 		fprintf(stderr, "ERROR: cannot allocate map for \"TID - thread-name\" mapping\n");
+		color("\033[0m");
 		_exit(1);
 	}
 
@@ -293,10 +309,13 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	//	int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
+
+	color("\033[0m");
 }
 
 void exit(int status)
 {
+	color("\033[0;31m");
 	fprintf(stderr, "Lock tracer terminating... (path: %s)\n", get_current_dir_name());
 
 	if (!items)
@@ -376,6 +395,8 @@ void exit(int status)
 	idx = 0;
 
 	delete tid_names;
+
+	color("\033[0m");
 
 	assert(0);
 }
