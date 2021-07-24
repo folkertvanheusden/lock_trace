@@ -315,16 +315,22 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 void exit(int status)
 {
+	uint64_t end_ts = get_us();
+
 	color("\033[0;31m");
 	fprintf(stderr, "Lock tracer terminating... (path: %s)\n", get_current_dir_name());
 
-	if (!items)
+	if (!items) {
 		fprintf(stderr, "No items recorded yet\n");
+		color("\033[0m");
+	}
 	else {
 		char *file_name = nullptr;
 		asprintf(&file_name, "dump.dat.%d", getpid());
 
 		fprintf(stderr, "Trace file (load with '-t' in analyze.py): %s\n", file_name);
+
+		color("\033[0m");
 
 		FILE *fh = fopen(file_name, "w");
 
@@ -333,16 +339,22 @@ void exit(int status)
 		if (!fh)
 			fh = stderr;
 
+		fprintf(fh, "end_ts %lu\n", end_ts);
+
 		fprintf(fh, "mutex_types %d %d %d\n", PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK);
 
 		fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\tt-name\tcount\towner\tkind\n");
 
 		char caller_str[512];
 
-		if (idx > n_records)
-			idx = n_records;
+		// Copy, in case a thread is still running and adding new records: a for-loop
+		// on 'idx' might run longer than intended and even emit garbage.
+		uint64_t n_rec_inserted = idx;
 
-		for(uint64_t i = 0; i<idx; i++) {
+		if (n_rec_inserted > n_records)
+			n_rec_inserted = n_records;
+
+		for(uint64_t i = 0; i<n_rec_inserted; i++) {
 			caller_str[0] = 0x00;
 
 #ifndef WITH_TIMESTAMP
@@ -395,8 +407,6 @@ void exit(int status)
 	idx = 0;
 
 	delete tid_names;
-
-	color("\033[0m");
 
 	assert(0);
 }

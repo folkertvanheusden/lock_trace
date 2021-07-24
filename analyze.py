@@ -166,6 +166,8 @@ else:
 
 any_records = False
 
+end_ts = None
+
 PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_ERRORCHECK = None
 
 def mutex_kind_to_str(mk):
@@ -205,6 +207,9 @@ while True:
         PTHREAD_MUTEX_NORMAL = r[1]
         PTHREAD_MUTEX_RECURSIVE = r[2]
         PTHREAD_MUTEX_ERRORCHECK = r[3]
+
+    elif r[0] == 'end_ts':  # meta
+        end_ts = int(r[1])
 
     elif r[3] == 'lock':
         resolve_addresses(core_file, r[4])
@@ -309,7 +314,7 @@ while True:
         deadlocks.append(r)
 
     else:
-        print('Unknown action: %s' % r[4])
+        print('Unknown action: %s' % r[3])
         sys.exit(1)
 
 if not any_records:
@@ -327,10 +332,16 @@ def my_ctime(ts):
 
     return '%04d-%02d-%02d %02d:%02d:%02d.%06d' % (dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, ts % 1000000)
 
-def pp_record(r, ot):
-    since = my_ctime(int(r[5]))
+def pp_record(r, end_ts, ot):
+    since_ts = int(r[5])
+    since = my_ctime(since_ts)
 
-    rc = 'index: %s, mutex: %s, tid: %s, name: %s, since: %s (%s), count: %s, owner: %s, kind: %s' % (r[0], r[1], r[2], r[6], r[5], since, r[7], r[8], mutex_kind_to_str(r[9]))
+    if not end_ts:
+        end_ts = since_ts - 1
+
+    duration = (end_ts - since_ts) / 1000000.0
+
+    rc = 'index: %s, mutex: %s, tid: %s, name: %s, since: %s (%s), locked for %.6fs, count: %s, owner: %s, kind: %s' % (r[0], r[1], r[2], r[6], r[5], since, duration, r[7], r[8], mutex_kind_to_str(r[9]))
 
     if ot == 'html':
         return '<li>%s</li>' % rc
@@ -348,7 +359,7 @@ else:
 any_dl = False
 
 for d in deadlocks:
-    print(pp_record(deadlocks[d], output_type))
+    print(pp_record(deadlocks[d], end_ts, output_type))
 
     if output_type == 'html':
         print('<br>')
@@ -391,7 +402,7 @@ for bw in by_who_m:
         for ri in by_who_m[bw]:
             r = by_who_m[bw][ri]
 
-            print(pp_record(r, output_type))
+            print(pp_record(r, end_ts, output_type))
 
             if output_type == 'html':
                 print('<br>')
@@ -434,7 +445,7 @@ for bw in by_who_t:
         for ri in by_who_t[bw]:
             r = by_who_t[bw][ri]
 
-            print(pp_record(r, output_type))
+            print(pp_record(r, end_ts, output_type))
 
             if output_type == 'html':
                 print('<br>')
@@ -475,11 +486,11 @@ temp.update(before)
 for r in temp:
     if output_type == 'html':
         print('<h3>%s</h3>' % temp[r][1])
-        print('<p>%s</p>' % pp_record(temp[r], 'text'))
+        print('<p>%s</p>' % pp_record(temp[r], end_ts, 'text'))
 
     else:
         print(r[1])
-        print(pp_record(temp[r], 'text'))
+        print(pp_record(temp[r], end_ts, 'text'))
 
     dump_stacktrace(resolve_addresses(core_file, temp[r][4]), output_type)
 
