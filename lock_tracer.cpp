@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <atomic>
 #include <dlfcn.h>
+#include <errno.h>
 #include <execinfo.h>
 #include <map>
 #include <pthread.h>
@@ -18,6 +19,7 @@
 #include <unistd.h>
 #include <bits/pthreadtypes.h>
 #include <bits/struct_mutex.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
@@ -48,6 +50,7 @@
 
 uint64_t n_records = 16777216;
 bool limit_reached = false;
+size_t length = 0;
 
 uint64_t get_us()
 {
@@ -266,9 +269,23 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 	fprintf(stderr, "Tracing max. %zu records\n", n_records);
 
-	items = new lock_trace_item_t[n_records];
+	length = n_records * sizeof(lock_trace_item_t);
+	items = (lock_trace_item_t *)mmap(nullptr, length, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+	if (items == MAP_FAILED) {
+		fprintf(stderr, "ERROR: cannot allocate %lu bytes of memory (reduce with the \"TRACE_N_RECORDS\" environment variable): %s\n", length, strerror(errno));
+		_exit(1);
+	}
+
+	if (posix_madvise(items, length, POSIX_MADV_SEQUENTIAL) == -1)
+		perror("madvise");
 
 	tid_names = new std::map<int, std::string>();
+
+	if (!tid_names) {
+		fprintf(stderr, "ERROR: cannot allocate map for \"TID - thread-name\" mapping\n");
+		_exit(1);
+	}
 
 	// FIXME intercept:
 	// 	int pthread_mutex_trylock(pthread_mutex_t *mutex);
@@ -355,7 +372,7 @@ void exit(int status)
 
 	fflush(nullptr);
 
-	delete [] items;
+	munmap(items, length);
 	idx = 0;
 
 	delete tid_names;
