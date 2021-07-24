@@ -149,16 +149,6 @@ def dump_stacktrace(symbols, ot):
     if ot == 'html':
         print('</table>')
 
-if trace_file:
-    lines = open(trace_file).readlines()
-
-else:
-    lines = sys.stdin.readlines()
-
-# t   mutex   tid action    callers timestamp   tid-name    m-count   m-owner   m-kind
-# 0   1       2   3         4       5           6           7         8         9
-records = [ l.split() for l in lines ]
-
 state = dict()
 before = dict()
 by_who_m = dict()  # on mutex
@@ -194,7 +184,23 @@ def mutex_kind_to_str(mk):
 
     return '? %s ?' % mk
 
-for r in records:
+if trace_file:
+    fh = open(trace_file)
+
+while True:
+    if trace_file:
+        line = fh.readline()
+
+    else:
+        line = sys.stdin.readline()
+
+    if not line:
+        break
+
+    # t   mutex   tid action    callers timestamp   tid-name    m-count   m-owner   m-kind
+    # 0   1       2   3         4       5           6           7         8         9
+    r = line.split()
+
     if r[0] == 'mutex_types':  # meta
         PTHREAD_MUTEX_NORMAL = r[1]
         PTHREAD_MUTEX_RECURSIVE = r[2]
