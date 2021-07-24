@@ -31,8 +31,6 @@
 
 #define CALLER_DEPTH 8
 
-#define BUFFER_SIZE 16777216  // in number of items
-
 #define PREVENT_RECURSION  // required at least on RHEL and Fedora
 
 #define CAPTURE_PTHREAD_EXIT
@@ -47,6 +45,9 @@
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
+
+uint64_t n_records = 16777216;
+bool limit_reached = false;
 
 uint64_t get_us()
 {
@@ -121,7 +122,7 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 
 	uint64_t cur_idx = idx++;
 
-	if (likely(cur_idx < BUFFER_SIZE)) {
+	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
 		bool get_backtrace = !prevent_backtrace;
 
@@ -153,6 +154,10 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 		items[cur_idx].mutex_innards.__owner = mutex->__data.__owner;
 		items[cur_idx].mutex_innards.__kind  = mutex->__data.__kind;
 	}
+	else if (!limit_reached) {
+		limit_reached = true;
+		fprintf(stderr, "Trace buffer full\n");
+	}
 }
 
 #ifdef CAPTURE_PTHREAD_EXIT
@@ -163,13 +168,17 @@ void pthread_exit(void *retval)
 	if (likely(items != nullptr)) {
 		uint64_t cur_idx = idx++;
 
-		if (likely(cur_idx < BUFFER_SIZE)) {
+		if (likely(cur_idx < n_records)) {
 			items[cur_idx].lock = nullptr;
 			items[cur_idx].tid = _gettid();
 			items[cur_idx].la = a_thread_clean;
 #ifdef WITH_TIMESTAMP
 			items[cur_idx].timestamp = get_us();
 #endif
+		}
+		else if (!limit_reached) {
+			limit_reached = true;
+			fprintf(stderr, "Trace buffer full\n");
 		}
 	}
 
@@ -251,7 +260,13 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	else if (rlim.rlim_max == 0 || rlim.rlim_cur == 0)
 		fprintf(stderr, "NOTE: core-files have been disabled! You may want to re-run after invoking \"ulimit -c unlimited\".\n");
 
-	items = new lock_trace_item_t[16777216];
+	const char *env_n_records = getenv("TRACE_N_RECORDS");
+	if (env_n_records)
+		n_records = atoll(env_n_records);
+
+	fprintf(stderr, "Tracing max. %zu records\n", n_records);
+
+	items = new lock_trace_item_t[n_records];
 
 	tid_names = new std::map<int, std::string>();
 
@@ -288,8 +303,8 @@ void exit(int status)
 
 		char caller_str[512];
 
-		if (idx > BUFFER_SIZE)
-			idx = BUFFER_SIZE;
+		if (idx > n_records)
+			idx = n_records;
 
 		for(uint64_t i = 0; i<idx; i++) {
 			caller_str[0] = 0x00;

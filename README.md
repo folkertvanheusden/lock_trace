@@ -50,6 +50,10 @@ If you do this before all data is freed, then analysis by
 yourself later on of the core-file will be more easy. Like
 finding information about mutexes.
 
+You can change the maximum number of trace records by
+setting the 'TRACE_N_RECORDS' environment variable. Defeault
+is 16777216 records.
+
 
 Show analysis:
 
