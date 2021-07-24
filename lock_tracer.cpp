@@ -16,6 +16,8 @@
 #include <string>
 #include <string.h>
 #include <unistd.h>
+#include <bits/pthreadtypes.h>
+#include <bits/struct_mutex.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -67,6 +69,11 @@ typedef struct {
 	// the one in linux is said to be max. 16 characters including 0x00 (pthread_setname_np)
 	char thread_name[16];
 #endif
+	struct {
+		unsigned int __count;
+		int __owner;
+		int __kind;
+	} mutex_innards;
 } lock_trace_item_t;
 
 std::atomic_uint64_t idx { 0 };
@@ -140,6 +147,10 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
 		}
 #endif
+
+		items[cur_idx].mutex_innards.__count = mutex->__data.__count;
+		items[cur_idx].mutex_innards.__owner = mutex->__data.__owner;
+		items[cur_idx].mutex_innards.__kind  = mutex->__data.__kind;
 	}
 }
 
@@ -257,7 +268,9 @@ void exit(int status)
 		if (!fh)
 			fh = stderr;
 
-		fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\n");
+		fprintf(fh, "mutex_types %d %d %d\n", PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK);
+
+		fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\tt-name\tcount\towner\tkind\n");
 
 		char caller_str[512];
 
@@ -304,7 +317,7 @@ void exit(int status)
 				name[1] = 0x00;
 			}
 
-			fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\t%s\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp, name);
+			fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\t%s\t%d\t%d\t%d\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp, name, items[i].mutex_innards.__count, items[i].mutex_innards.__owner, items[i].mutex_innards.__kind);
 		}
 
 		if (fh != stderr)

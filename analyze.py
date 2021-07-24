@@ -155,7 +155,8 @@ if trace_file:
 else:
     lines = sys.stdin.readlines()
 
-# t   mutex   tid action    callers timestamp   tid-name
+# t   mutex   tid action    callers timestamp   tid-name    m-count   m-owner   m-kind
+# 0   1       2   3         4       5           6           7         8         9
 records = [ l.split() for l in lines ]
 
 state = dict()
@@ -175,8 +176,31 @@ else:
 
 any_records = False
 
+PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_ERRORCHECK = None
+
+def mutex_kind_to_str(mk):
+    global PTHREAD_MUTEX_NORMAL
+    global PTHREAD_MUTEX_RECURSIVE
+    global PTHREAD_MUTEX_ERRORCHECK
+
+    if mk == PTHREAD_MUTEX_NORMAL:
+        return 'normal'
+
+    if mk == PTHREAD_MUTEX_RECURSIVE:
+        return 'recursive'
+
+    if mk == PTHREAD_MUTEX_ERRORCHECK:
+        return 'errorcheck'
+
+    return '??? %d ???' % mk
+
 for r in records:
-    if r[3] == 'lock':
+    if r[0] == 'mutex_types':  # meta
+        PTHREAD_MUTEX_NORMAL = r[1]
+        PTHREAD_MUTEX_RECURSIVE = r[2]
+        PTHREAD_MUTEX_ERRORCHECK = r[3]
+
+    elif r[3] == 'lock':
         resolve_addresses(core_file, r[4])
 
         if not (r[1] in state and (check_by_itself == False or (check_by_itself == True and state[r[1]][2] == r[2]))):
@@ -191,7 +215,7 @@ for r in records:
                 if output_type == 'html':
                     print('<h3>Double lock</h3>')
                     print('<h4>current</h3>')
-                    print('<p>index: %s, mutex: %s, tid: %s, thread name: %s</p>' % (r[0], r[1], r[2], r[6]))
+                    print('<p>index: %s, mutex: %s, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (r[0], r[1], r[2], r[6], r[7], r[8], mutex_kind_to_str(r[9])))
                 else:
                     print('Double lock: ', r[0], r[1], r[2], r[6])
 
@@ -203,7 +227,7 @@ for r in records:
                 old_r = by_who_t[r[2]][r[1]]
                 if output_type == 'html':
                     print('<h4>previous</h3>')
-                    print('<p>index: %s, tid: %s, thread name: %s</p>' % (old_r[0], old_r[2], old_r[6]))
+                    print('<p>index: %s, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (old_r[0], old_r[2], old_r[6], r[7], r[8], mutex_kind_to_str(r[9])))
                 else:
                     print('\t', old_r[0], old_r[2])
 
@@ -245,9 +269,9 @@ for r in records:
             else:
                 if output_type == 'html':
                     print('<h3>Invalid unlock</h3>')
-                    print('<p>index: %s, mutex: %s, tid: %s, thread_name: %s</p>' % (r[0], r[1], r[2], r[6]))
+                    print('<p>index: %s, mutex: %s, tid: %s, thread_name: %s, count: %s, owner: %s, kind: %s</p>' % (r[0], r[1], r[2], r[6], r[7], r[8], mutex_kind_to_str(r[9])))
                 else:
-                    print('Invalid unlock: ', r[0], r[1], r[2], r[6])
+                    print('Invalid unlock: ', r[0], r[1], r[2], r[6], r[7], r[8], mutex_kind_to_str(r[9]))
 
                 dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
 
@@ -300,7 +324,7 @@ def my_ctime(ts):
 def pp_record(r, ot):
     since = my_ctime(int(r[5]))
 
-    rc = 'index: %s, mutex: %s, tid: %s, name: %s, since: %s (%s)' % (r[0], r[1], r[2], r[6], r[5], since)
+    rc = 'index: %s, mutex: %s, tid: %s, name: %s, since: %s (%s), count: %s, owner: %s, kind: %s' % (r[0], r[1], r[2], r[6], r[5], since, r[7], r[8], mutex_kind_to_str(r[9]))
 
     if ot == 'html':
         return '<li>%s</li>' % rc
