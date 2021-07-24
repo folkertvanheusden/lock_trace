@@ -201,7 +201,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 
 int pthread_mutex_trylock(pthread_mutex_t *mutex)
 {
-	if (unlikely(!org_pthread_mutex_lock_h))
+	if (unlikely(!org_pthread_mutex_trylock_h))
 		org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
