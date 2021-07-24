@@ -263,7 +263,14 @@ void exit(int status)
 	if (!items)
 		fprintf(stderr, "No items recorded yet\n");
 	else {
-		FILE *fh = fopen("dump.dat", "w");
+		char *file_name = nullptr;
+		asprintf(&file_name, "dump.dat.%d", getpid());
+
+		fprintf(stderr, "Trace file (load with '-t' in analyze.py): %s\n", file_name);
+
+		FILE *fh = fopen(file_name, "w");
+
+		free(file_name);
 
 		if (!fh)
 			fh = stderr;
