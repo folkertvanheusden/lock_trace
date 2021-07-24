@@ -79,28 +79,30 @@ def resolve_addresses(core_file, chain):
     if core_file == None:
         return
 
-    if chain in resolver_cache:
-        return resolver_cache[chain]
+    chain_symbols = []
 
-    else:
-        chain_symbols = []
+    addresses = chain.split(',')
+    for a in addresses:
+        if a == '(nil)' or a == '':
+            break
 
-        addresses = chain.split(',')
-        for a in addresses:
-            if a == '(nil)' or a == '':
-                break
+        if a in resolver_cache:
+            symbol = resolver_cache[a]
 
+        else:
             symbol = os.popen('%s --core %s %s' % (resolver, core_file, a)).read().rstrip('\n')
+            resolver_cache[a] = symbol
 
-            if symbol == '??:0':  # could not resolve
-                symbol = '%s:-1:-1' % a
+        if symbol == '??:0':  # could not resolve
+            symbol = '%s:-1:-1' % a
+            resolver_cache[a] = symbol
 
-            chain_symbols.append(symbol)
+        chain_symbols.append(symbol)
 
-        if len(chain_symbols):
-            resolver_cache[chain] = chain_symbols
+    if len(chain_symbols):
+        resolver_cache[chain] = chain_symbols
 
-        return chain_symbols
+    return chain_symbols
 
 def dump_stacktrace(symbols, ot):
     if ot == 'html':
