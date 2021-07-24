@@ -38,6 +38,10 @@
 
 /////////////////////////////////////
 
+#ifndef __linux__
+#warning This program may only work correctly on Linux.
+#endif
+
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 

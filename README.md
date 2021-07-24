@@ -32,6 +32,9 @@ Make sure your system can create core files:
 ulimit -c unlimited
 ```
 
+If possible, link your program with -rdynamic and compile
+and link it with -ggdb3.
+
 Then:
 
 ```
