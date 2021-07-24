@@ -192,7 +192,7 @@ def mutex_kind_to_str(mk):
     if mk == PTHREAD_MUTEX_ERRORCHECK:
         return 'errorcheck'
 
-    return '??? %d ???' % mk
+    return '? %s ?' % mk
 
 for r in records:
     if r[0] == 'mutex_types':  # meta
