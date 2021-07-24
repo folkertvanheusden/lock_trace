@@ -98,6 +98,12 @@ Note: valgrind affects *all* performance while lock_tracer only
 affects the locking/unlocking calls!
 
 
+similar software
+----------------
+* mutrace, http://0pointer.de/blog/projects/mutrace.html
+* valgrind, https://valgrind.org/
+
+
 (C) 2021 by folkert@vanheusden.com
 Released under GPL v3.0.
 
