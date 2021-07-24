@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <bits/pthreadtypes.h>
 #include <bits/struct_mutex.h>
+#include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -243,6 +244,12 @@ int pthread_setname_np(pthread_t thread, const char *name)
 void __attribute__ ((constructor)) start_lock_tracing()
 {
 	fprintf(stderr, "Lock tracer starting... (structure size: %zu bytes)\n", sizeof(lock_trace_item_t));
+
+	struct rlimit rlim { 0, 0 };
+	if (getrlimit(RLIMIT_CORE, &rlim) == -1)
+		perror("getrlimit(RLIMIT_CORE) failed");
+	else if (rlim.rlim_max == 0 || rlim.rlim_cur == 0)
+		fprintf(stderr, "NOTE: core-files have been disabled! You may want to re-run after invoking \"ulimit -c unlimited\".\n");
 
 	items = new lock_trace_item_t[16777216];
 
