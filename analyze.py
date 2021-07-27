@@ -122,6 +122,7 @@ def dump_stacktrace(symbols):
 
     print('</table>', file=fh_out)
 
+# mutexes
 state = dict()
 before = dict()
 by_who_m = dict()  # on mutex
@@ -130,9 +131,15 @@ durations = dict()
 l_durations = dict()
 used_in_tid = dict()
 deadlocks = []
-
 locked = dict()
 contended = dict()
+
+# r/w locks
+rw_state = dict()
+# need to emit them later on or they'll be mixed with the mutex output
+rw_state_failures = []
+
+# both
 
 any_records = False
 
@@ -289,7 +296,7 @@ while True:
         used_in_tid[j['lock']].add('%d (%s)' % (j['tid'], j['thread_name']))
 
         if j['tid'] in by_who_t and j['lock'] in by_who_t[j['tid']]:
-                print('<h3>Double lock</h3>', file=fh_out)
+                print('<h3>Double mutex lock</h3>', file=fh_out)
                 print('<h4>current</h3>', file=fh_out)
                 print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])), file=fh_out)
 
@@ -337,7 +344,7 @@ while True:
                 del by_who_m[j['lock']][j['tid']]
 
             else:
-                print('<h3>Invalid unlock</h3>', file=fh_out)
+                print('<h3>Invalid mutex unlock</h3>', file=fh_out)
                 print('<p>index: %s, mutex: %016x, tid: %s, thread_name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])), file=fh_out)
 
                 dump_stacktrace(resolve_addresses(core_file, j['caller']))
@@ -347,6 +354,39 @@ while True:
         if j['tid'] in by_who_t:
             if j['lock'] in by_who_t[j['tid']]:
                 del by_who_t[j['tid']][j['lock']]
+
+    elif j['type'] == 'data' and j['action'] == 'readlock':
+        if not j['lock'] in rw_state:
+            rw_state[j['lock']] = set()
+
+        if j['tid'] in rw_state[j['lock']]:
+            print('<h3>Double r/w-lock read lock</h3>', file=fh_out)
+            print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name']), file=fh_out)
+            dump_stacktrace(resolve_addresses(core_file, j['caller']))
+
+        else:
+            rw_state[j['lock']].add(j['tid'])
+
+    elif j['type'] == 'data' and j['action'] == 'writelock':
+        if not j['lock'] in rw_state:
+            rw_state[j['lock']] = set()
+
+        if j['tid'] in rw_state[j['lock']]:
+            print('<h3>Double r/w-lock write-lock</h3>', file=fh_out)
+            print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name']), file=fh_out)
+            dump_stacktrace(resolve_addresses(core_file, j['caller']))
+
+        else:
+            rw_state[j['lock']].add(j['tid'])
+
+    elif j['type'] == 'data' and j['action'] == 'rwunlock':
+        if j['tid'] in rw_state[j['lock']]:
+            rw_state[j['lock']].remove(j['tid'])
+
+        else:
+            print('<h3>Invalid r/w-lock unlock</h3>', file=fh_out)
+            print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name']), file=fh_out)
+            dump_stacktrace(resolve_addresses(core_file, j['caller']))
 
     elif j['type'] == 'marker':
         emit_header()
