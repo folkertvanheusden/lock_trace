@@ -29,6 +29,13 @@ target_link_libraries(lock_tracer Threads::Threads)
 
 target_link_libraries(test Threads::Threads)
 
+include(FindPkgConfig)
+
+pkg_check_modules(JANSSON REQUIRED jansson)
+target_link_libraries(lock_tracer ${JANSSON_LIBRARIES})
+target_include_directories(lock_tracer PUBLIC ${JANSSON_INCLUDE_DIRS})
+target_compile_options(lock_tracer PUBLIC ${JANSSON_CFLAGS_OTHER})
+
 target_link_libraries(lock_tracer -ldl)
 target_link_libraries(lock_tracer -rdynamic)
 
