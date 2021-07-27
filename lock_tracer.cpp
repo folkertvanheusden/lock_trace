@@ -23,6 +23,7 @@
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
+#include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/types.h>
 
@@ -359,11 +360,17 @@ void exit(int status)
 		if (!fh)
 			fh = stderr;
 
+		char hostname[HOST_NAME_MAX + 1];
+		gethostname(hostname, sizeof hostname);
+		fprintf(fh, "hostname %s\n", hostname);
+
 		fprintf(fh, "start_ts %lu\n", start_ts);
 
 		fprintf(fh, "end_ts %lu\n", end_ts);
 
 		fprintf(fh, "fork_warning %d\n", fork_warning);
+
+		fprintf(fh, "n_procs %d\n", get_nprocs());
 
 		fprintf(fh, "mutex_types %d %d %d\n", PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK);
 

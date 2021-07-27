@@ -178,9 +178,11 @@ def emit_header():
     print('<a name="meta"></a><h2>META DATA</h2>')
     print('<table><tr><th colspan=2>meta data</th></tr>')
     print('<tr><td>executable:</td><td>%s</td></tr>' % exe_name)
+    print('<tr><td>host name:</td><td>%s</td></tr>' % hostname)
     print('<tr><td>core file:</td><td>%s</td></tr>' % core_file)
     print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file)
     print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning)
+    print('<tr><td># cores:</td><td>%s</td></tr>' % n_procs)
     print('<tr><td>started at:</td><td>%s (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))))
     print('<tr><td>stopped at:</td><td>%s (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))))
     print('<tr><td>took:</td><td>%fs</td></tr>' % ((end_ts - start_ts) / 1000000))
@@ -243,6 +245,12 @@ while True:
 
     elif r[0] == 'fork_warning':  # meta
         fork_warning = r[1].rstrip('\n') != '0'
+
+    elif r[0] == 'hostname':  # meta
+        hostname = r[1]  # assuming they never have spaces in them
+
+    elif r[0] == 'n_procs':  # meta
+        n_procs = int(r[1])
 
     elif r[3] == 'lock':
         resolve_addresses(core_file, r[4])
