@@ -137,7 +137,7 @@ void test_rwlock()
 
 int main(int argc, char *argv[])
 {
-//	test_mutex();
+	test_mutex();
 
 	test_rwlock();
 

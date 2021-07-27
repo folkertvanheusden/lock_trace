@@ -264,12 +264,13 @@ while True:
 
         # cannot use 'durations' in case unlocks are performed more often than locks
         if not j['lock'] in l_durations:
-            l_durations[j['lock']] = [ 0, 0 ]
+            l_durations[j['lock']] = dict()
+            l_durations[j['lock']]['n'] = l_durations[j['lock']]['sum_took'] = 0
 
-        l_durations[j['lock']][0] += 1  # n
-        l_durations[j['lock']][1] += j['lock_took']  # n
+        l_durations[j['lock']]['n'] += 1  # n
+        l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
 
-        if not (j['lock'] in state and (check_by_itself == False or (check_by_itself == True and state[j['lock']][2] == j['tid']))):
+        if not (j['lock'] in state and (check_by_itself == False or (check_by_itself == True and state[j['lock']]['tid'] == j['tid']))):
             state[j['lock']] = j
 
         if j['lock'] in locked:
@@ -318,6 +319,11 @@ while True:
     elif j['type'] == 'data' and j['action'] == 'unlock':
         resolve_addresses(core_file, j['caller'])
 
+        if not j['lock'] in used_in_tid:
+            used_in_tid[j['lock']] = set()
+
+        used_in_tid[j['lock']].add('%d (%s)' % (j['tid'], j['thread_name']))
+
         if j['lock'] in state:
             before[j['lock']] = state[j['lock']]
             del state[j['lock']]
@@ -333,13 +339,20 @@ while True:
                 took = int(j['timestamp']) - int(by_who_m[j['lock']][j['tid']]['timestamp'])  # in s
 
                 if not j['lock'] in durations:
-                    durations[j['lock']] = [ 0, 0, 0, j['caller'], (j['t'], j['timestamp']), (0, 0), [] ]  # remember the first callback, usage
+                    durations[j['lock']] = dict()
+                    durations[j['lock']]['n'] = durations[j['lock']]['sum_took'] = durations[j['lock']]['sd_sum_took'] = 0
+                    durations[j['lock']]['first_unlock'] = dict()
+                    durations[j['lock']]['first_unlock']['idx'] = j['t']
+                    durations[j['lock']]['first_unlock']['epoch'] = j['timestamp']
+                    durations[j['lock']]['last_unlock'] = dict()
+                    durations[j['lock']]['median'] = [ ]
 
-                durations[j['lock']][0] += 1  # n
-                durations[j['lock']][1] += took  # avg
-                durations[j['lock']][2] += took * took  # sd
-                durations[j['lock']][5] = (j['t'], j['timestamp'])  # latest usage
-                durations[j['lock']][6].append(float(took))  # median
+                durations[j['lock']]['n'] += 1  # n
+                durations[j['lock']]['sum_took'] += took  # avg
+                durations[j['lock']]['sd_sum_took'] += took * took  # sd
+                durations[j['lock']]['last_unlock']['idx'] = j['t']
+                durations[j['lock']]['last_unlock']['epoch'] = j['timestamp']
+                durations[j['lock']]['median'].append(float(took))  # median
 
                 del by_who_m[j['lock']][j['tid']]
 
@@ -395,7 +408,7 @@ while True:
         purge = []
 
         for s in state:
-            if state[s][2] == j['tid']:
+            if state[s]['tid'] == j['tid']:
                 purge.append(s)
 
         for p in purge:
@@ -512,14 +525,15 @@ for r in temp:
 
     dump_stacktrace(resolve_addresses(core_file, temp[r]['caller']))
 
-    print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[j['lock']])), file=fh_out)
+    if j['lock'] in used_in_tid:
+        print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[j['lock']])), file=fh_out)
 
 print('<a name="durations"></a><h2>LOCKING DURATIONS</h2>', file=fh_out)
 
 for d in durations:
-    n = durations[d][0]
-    avg = durations[d][1] / n
-    sd = math.sqrt((durations[d][2] / n) - math.pow(avg, 2.0))
+    n = durations[d]['n']
+    avg = durations[d]['sum_took'] / n
+    sd = math.sqrt((durations[d]['sd_sum_took'] / n) - math.pow(avg, 2.0))
 
     print('<h3>mutex: %016x</h3>' % d, file=fh_out)
 
@@ -529,19 +543,19 @@ for d in durations:
     if d in contended:
         print('<tr><td>contended:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]), file=fh_out)
 
-    if d in l_durations and l_durations[d][0]:
-        lock_took = l_durations[d][1] / l_durations[d][0]
+    if d in l_durations and l_durations[d]['n']:
+        lock_took = l_durations[d]['sum_took'] / l_durations[d]['n']
         print('<tr><td>average time to take lock:</td><td>%.1fus</td></tr>' % lock_took, file=fh_out)
 
-    print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d][6]), file=fh_out)
+    print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d]['median']), file=fh_out)
     print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg, file=fh_out)
     print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd, file=fh_out)
-    sorted_list = sorted(durations[d][6])
+    sorted_list = sorted(durations[d]['median'])
     print('<tr><td>mininum:</td><td>%.2fus</td></tr>' % sorted_list[0], file=fh_out)
     print('<tr><td>median:</td><td>%.2fus</td></tr>' % sorted_list[len(sorted_list) // 2], file=fh_out)
     print('<tr><td>maximum:</td><td>%.2fus</td></tr>' % sorted_list[-1], file=fh_out)
-    print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][4][1])), durations[d][4][0]), file=fh_out)
-    print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][5][1])), durations[d][5][0]), file=fh_out)
+    print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d]['first_unlock']['epoch'])), durations[d]['first_unlock']['idx']), file=fh_out)
+    print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d]['last_unlock']['epoch'])), durations[d]['last_unlock']['idx']), file=fh_out)
     print('</table>', file=fh_out)
 
     # this can be implemented way smarter
