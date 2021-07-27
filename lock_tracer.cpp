@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <execinfo.h>
+#include <jansson.h>
 #include <limits.h>
 #include <map>
 #include <pthread.h>
@@ -26,6 +27,11 @@
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/types.h>
+
+#if JSON_INTEGER_IS_LONG_LONG
+#else
+	#error jansson should've been compiled with JSON_INTEGER_IS_LONG_LONG
+#endif
 
 //// YOU MAY NEED TO CHANGE THIS ////
 
@@ -334,6 +340,27 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	color("\033[0m");
 }
 
+void emit_key_value(FILE *fh, const char *key, const char *value)
+{
+	json_t *obj = json_object();
+	json_object_set(obj, "type", json_string("meta"));
+	json_object_set(obj, key, json_string(value));
+
+	fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
+
+	json_decref(obj);
+}
+
+void emit_key_value(FILE *fh, const char *key, const uint64_t value)
+{
+	char *value_str = nullptr;
+	asprintf(&value_str, "%lu", value);
+
+	emit_key_value(fh, key, value_str);
+
+	free(value_str);
+}
+
 void exit(int status)
 {
 	uint64_t end_ts = get_us();
@@ -362,24 +389,25 @@ void exit(int status)
 
 		char hostname[HOST_NAME_MAX + 1];
 		gethostname(hostname, sizeof hostname);
-		fprintf(fh, "hostname %s\n", hostname);
 
-		fprintf(fh, "start_ts %lu\n", start_ts);
+		emit_key_value(fh, "hostname", hostname);
 
-		fprintf(fh, "end_ts %lu\n", end_ts);
+		emit_key_value(fh, "start_ts", start_ts);
 
-		fprintf(fh, "fork_warning %d\n", fork_warning);
+		emit_key_value(fh, "end_ts", end_ts);
 
-		fprintf(fh, "n_procs %d\n", get_nprocs());
+		emit_key_value(fh, "fork_warning", fork_warning);
 
-		fprintf(fh, "mutex_types %d %d %d\n", PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK);
+		emit_key_value(fh, "n_procs", get_nprocs());
+
+		emit_key_value(fh, "mutex_type_normal", PTHREAD_MUTEX_NORMAL);
+		emit_key_value(fh, "mutex_type_recursive", PTHREAD_MUTEX_RECURSIVE);
+		emit_key_value(fh, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
 
 		char exe_name[PATH_MAX] = { 0 };
 		readlink("/proc/self/exe", exe_name, sizeof(exe_name) - 1);
 
-		fprintf(fh, "exe_name %s\n", exe_name);
-
-		fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\tt-name\tcount\towner\tkind\n");
+		emit_key_value(fh, "exe_name", exe_name);
 
 		char caller_str[512];
 
@@ -430,11 +458,33 @@ void exit(int status)
 				name[1] = 0x00;
 			}
 
-			fprintf(fh, "%zu\t%p\t%d\t%s\t%s\t%zu\t%s\t%d\t%d\t%d\n", i, items[i].lock, items[i].tid, action_name, caller_str, items[i].timestamp, name, items[i].mutex_innards.__count, items[i].mutex_innards.__owner, items[i].mutex_innards.__kind);
+			// fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\tt-name\tcount\towner\tkind\n");
+			json_t *obj = json_object();
+			json_object_set(obj, "type", json_string("data"));
+
+			json_object_set(obj, "t", json_integer(i));
+			json_object_set(obj, "lock", json_integer((long long unsigned int)items[i].lock));
+			json_object_set(obj, "tid", json_integer(items[i].tid));
+			json_object_set(obj, "action", json_string(action_name));
+			json_object_set(obj, "caller", json_string(caller_str));
+			json_object_set(obj, "timestamp", json_integer(items[i].timestamp));
+			json_object_set(obj, "thread_name", json_string(name));
+			// FIXME only for mutex, not r/w locks
+			json_object_set(obj, "mutex_count", json_integer(items[i].mutex_innards.__count));
+			json_object_set(obj, "mutex_owner", json_integer(items[i].mutex_innards.__owner));
+			json_object_set(obj, "mutex_kind", json_integer(items[i].mutex_innards.__kind));
+
+			fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
+
+			json_decref(obj);
 		}
 
-		if (fh != stderr)
+		if (fh != stderr) {
+			fsync(fileno(fh));
 			fclose(fh);
+
+			sync();
+		}
 	}
 
 	fflush(nullptr);
