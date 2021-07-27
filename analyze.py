@@ -179,6 +179,7 @@ def emit_header():
     print('<a name="meta"></a><h2>META DATA</h2>')
     print('<table><tr><th colspan=2>meta data</th></tr>')
     print('<tr><td>executable:</td><td>%s</td></tr>' % exe_name)
+    print('<tr><td>PID:</td><td>%d</td></tr>' % pid)
     print('<tr><td>host name:</td><td>%s</td></tr>' % hostname)
     print('<tr><td>core file:</td><td>%s</td></tr>' % core_file)
     print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file)
@@ -263,6 +264,9 @@ while True:
 
     elif j['type'] == 'meta' and 'n_procs' in j:
         n_procs = j['n_procs']
+
+    elif j['type'] == 'meta' and 'pid' in j:
+        pid = j['pid']
 
     elif j['type'] == 'data' and j['action'] == 'lock':
         resolve_addresses(core_file, j['caller'])

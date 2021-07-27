@@ -401,6 +401,8 @@ void exit(int status)
 
 		emit_key_value(fh, "n_procs", get_nprocs());
 
+		emit_key_value(fh, "pid", getpid());
+
 		emit_key_value(fh, "mutex_type_normal", PTHREAD_MUTEX_NORMAL);
 		emit_key_value(fh, "mutex_type_recursive", PTHREAD_MUTEX_RECURSIVE);
 		emit_key_value(fh, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
