@@ -30,7 +30,7 @@
 
 #if JSON_INTEGER_IS_LONG_LONG
 #else
-	#error jansson should've been compiled with JSON_INTEGER_IS_LONG_LONG
+	#error jansson should have been compiled with JSON_INTEGER_IS_LONG_LONG
 #endif
 
 //// YOU MAY NEED TO CHANGE THIS ////
@@ -418,6 +418,9 @@ void exit(int status)
 
 		if (n_rec_inserted > n_records)
 			n_rec_inserted = n_records;
+
+		emit_key_value(fh, "n_records", n_rec_inserted);
+		emit_key_value(fh, "n_records_max", n_records);
 
 		json_t *m_obj = json_object();
 		json_object_set(m_obj, "type", json_string("marker"));

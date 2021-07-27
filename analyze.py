@@ -182,11 +182,14 @@ def emit_header():
     print('<tr><td>host name:</td><td>%s</td></tr>' % hostname)
     print('<tr><td>core file:</td><td>%s</td></tr>' % core_file)
     print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file)
+    took = (end_ts - start_ts) / 1000000
+    n_per_sec = n_records / took
+    print('<tr><td># trace records:</td><td>%s (%.2f%%, %.2f%%/s)</td></tr>' % (n_records, n_records * 100.0 / n_records_max, n_per_sec * 100.0 / n_records_max))
     print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning)
     print('<tr><td># cores:</td><td>%s</td></tr>' % n_procs)
     print('<tr><td>started at:</td><td>%d (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))))
     print('<tr><td>stopped at:</td><td>%d (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))))
-    print('<tr><td>took:</td><td>%fs</td></tr>' % ((end_ts - start_ts) / 1000000))
+    print('<tr><td>took:</td><td>%fs</td></tr>' % took)
     print('</table>')
 
     if output_type == 'html':
@@ -226,12 +229,16 @@ while True:
     if not line:
         break
 
-    # t   mutex   tid action    callers timestamp   tid-name    m-count   m-owner   m-kind
-    # 0   1       2   3         4       5           6           7         8         9
     j = json.loads(line)
 
     if j['type'] == 'meta' and 'mutex_type_normal' in j:
         PTHREAD_MUTEX_NORMAL = j['mutex_type_normal']
+
+    elif j['type'] == 'meta' and 'n_records' in j:
+        n_records = j['n_records']
+
+    elif j['type'] == 'meta' and 'n_records_max' in j:
+        n_records_max = j['n_records_max']
 
     elif j['type'] == 'meta' and 'mutex_type_recursive' in j:
         PTHREAD_MUTEX_RECURSIVE = j['mutex_type_recursive']
@@ -360,7 +367,7 @@ while True:
         deadlocks.append(j)
 
     else:
-        print('Unknown %s action: %s' % (j['type'], j['action']))
+        print('Unknown record: %s' % j)
         sys.exit(1)
 
 if not any_records:
