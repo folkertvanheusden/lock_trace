@@ -59,7 +59,7 @@ is 16777216 records.
 Show analysis:
 
 ```
-./analyze.py -c core -t dump.dat -o html > report.html
+./analyze.py -c core -t dump.dat -f report.html
 ```
 
 This will generate an html-file that can be opened with a regular
