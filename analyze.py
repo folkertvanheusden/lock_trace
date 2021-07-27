@@ -51,6 +51,8 @@ if output_type == 'html':
     print('<title>lock trace</title></head><body>')
     print('<h1>LOCK TRACE</h1>')
 
+    print('<p>Core file: %s<br>Trace file: %s</p>' % (core_file, trace_file))
+
     print('<ul>')
     print('<li><a href="#double">double locks/unlocks</a>')
     print('<li><a href="#deadlocks">deadlocks</a>')
