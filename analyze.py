@@ -22,8 +22,10 @@ output_type = 'text'
 
 exe_name = '?'
 
+fh_out = sys.stdout
+
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "c:t:r:bo:", ["core=", "trace=", "resolver=", "human-backtrace", "output-type="])
+    opts, args = getopt.getopt(sys.argv[1:], "c:t:r:bo:f:", ["core=", "trace=", "resolver=", "human-backtrace", "output-type=", "file="])
 except getopt.GetoptError as err:
     print(err)
     sys.exit(1)
@@ -45,7 +47,16 @@ for o, a in opts:
         else:
             assert False, "%s not understood for -o" % a
 
+    elif o in ("-f", "--file"):
+        fh_out = open(a, 'w')
+
     else:
+        print('Invalid command line parameter: %s %s' % (o, a))
+        print('-c --core      path to the core file')
+        print('-t --trace     path to the trace file')
+        print('-r --resolver  path to the symbol resolver (\'eu-addr2line\')')
+        print('-o             \'html\' or \'text\'')
+        print('-f             file to write report to, skip for stdout')
         assert False, "unhandled option"
 
 check_by_itself = False  # only (when True) check for "locked by itself earlier"
@@ -91,11 +102,11 @@ def resolve_addresses(core_file, chain):
 
 def dump_stacktrace(symbols, ot):
     if ot == 'html':
-        print('<table border=1>')
-        print('<tr><th>frame</th><th>symbol</th><th>line-nr</th><th></th></tr>')
+        print('<table border=1>', file=fh_out)
+        print('<tr><th>frame</th><th>symbol</th><th>line-nr</th><th></th></tr>', file=fh_out)
 
     else:
-        print('\tsymbol\t\tline-nr')
+        print('\tsymbol\t\tline-nr', file=fh_out)
 
     p_file_name = None
 
@@ -112,10 +123,10 @@ def dump_stacktrace(symbols, ot):
 
         if p_file_name == c_file_name and human_friendly_backtrace == True:
             if ot == 'html':
-                print('<tr><td>%d</d><td>%s</td><td>%s</td><td>%s</td></tr>' % (idx, '', pars[0], pars[1]))
+                print('<tr><td>%d</d><td>%s</td><td>%s</td><td>%s</td></tr>' % (idx, '', pars[0], pars[1]), file=fh_out)
 
             else:
-                print('\t%d\t%s\t%s\t%s' % (idx, ' ' * len(p_file_name), pars[0], pars[1]))
+                print('\t%d\t%s\t%s\t%s' % (idx, ' ' * len(p_file_name), pars[0], pars[1]), file=fh_out)
 
         else:
             p_file_name = c_file_name
@@ -124,15 +135,15 @@ def dump_stacktrace(symbols, ot):
                 pars.append('-')
 
             if ot == 'html':
-                print('<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>' % (idx, c_file_name, pars[0], pars[1]))
+                print('<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td></tr>' % (idx, c_file_name, pars[0], pars[1]), file=fh_out)
 
             else:
-                print('\t%d\t%s' % e.replace(':', '\t'))
+                print('\t%d\t%s' % e.replace(':', '\t'), file=fh_out)
 
         idx += 1
 
     if ot == 'html':
-        print('</table>')
+        print('</table>', file=fh_out)
 
 state = dict()
 before = dict()
@@ -163,48 +174,48 @@ def emit_header():
     global end_ts
 
     if output_type == 'html':
-        print('<!DOCTYPE html>\n<html><head>')
-        print('<style>table{font-size:16px;font-family:"Trebuchet MS",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>')
-        print('<title>lock trace</title></head><body>')
-        print('<h1>LOCK TRACE</h1>')
-        print('<h2>table of contents</h2>')
-        print('<ul>')
-        print('<li><a href="#meta">meta data</a>')
-        print('<li><a href="#double">double locks/unlocks</a>')
-        print('<li><a href="#deadlocks">deadlocks</a>')
-        print('<li><a href="#slmut">still locked - grouped by mutex</a>')
-        print('<li><a href="#sltid">still locked - grouped by TID</a>')
-        print('<li><a href="#durations">locking durations</a>')
-        print('<li><a href="#lastmutexuse">where were mutexes used last</a>')
-        print('</ul>')
+        print('<!DOCTYPE html>\n<html><head>', file=fh_out)
+        print('<style>table{font-size:16px;font-family:"Trebuchet MS",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>', file=fh_out)
+        print('<title>lock trace</title></head><body>', file=fh_out)
+        print('<h1>LOCK TRACE</h1>', file=fh_out)
+        print('<h2>table of contents</h2>', file=fh_out)
+        print('<ul>', file=fh_out)
+        print('<li><a href="#meta">meta data</a>', file=fh_out)
+        print('<li><a href="#double">double locks/unlocks</a>', file=fh_out)
+        print('<li><a href="#deadlocks">deadlocks</a>', file=fh_out)
+        print('<li><a href="#slmut">still locked - grouped by mutex</a>', file=fh_out)
+        print('<li><a href="#sltid">still locked - grouped by TID</a>', file=fh_out)
+        print('<li><a href="#durations">locking durations</a>', file=fh_out)
+        print('<li><a href="#lastmutexuse">where were mutexes used last</a>', file=fh_out)
+        print('</ul>', file=fh_out)
 
     else:
-        print(' +++ lock trace +++')
+        print(' +++ lock trace +++', file=fh_out)
 
-    print('<a name="meta"></a><h2>META DATA</h2>')
-    print('<table><tr><th colspan=2>meta data</th></tr>')
-    print('<tr><td>executable:</td><td>%s</td></tr>' % exe_name)
-    print('<tr><td>PID:</td><td>%d</td></tr>' % pid)
-    print('<tr><td>host name:</td><td>%s</td></tr>' % hostname)
-    print('<tr><td>core file:</td><td>%s</td></tr>' % core_file)
-    print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file)
+    print('<a name="meta"></a><h2>META DATA</h2>', file=fh_out)
+    print('<table><tr><th colspan=2>meta data</th></tr>', file=fh_out)
+    print('<tr><td>executable:</td><td>%s</td></tr>' % exe_name, file=fh_out)
+    print('<tr><td>PID:</td><td>%d</td></tr>' % pid, file=fh_out)
+    print('<tr><td>host name:</td><td>%s</td></tr>' % hostname, file=fh_out)
+    print('<tr><td>core file:</td><td>%s</td></tr>' % core_file, file=fh_out)
+    print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file, file=fh_out)
     took = (end_ts - start_ts) / 1000000
     n_per_sec = n_records / took
-    print('<tr><td># trace records:</td><td>%s (%.2f%%, %.2f%%/s)</td></tr>' % (n_records, n_records * 100.0 / n_records_max, n_per_sec * 100.0 / n_records_max))
-    print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning)
-    print('<tr><td># cores:</td><td>%s</td></tr>' % n_procs)
-    print('<tr><td>started at:</td><td>%d (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))))
-    print('<tr><td>stopped at:</td><td>%d (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))))
-    print('<tr><td>took:</td><td>%fs</td></tr>' % took)
-    print('</table>')
+    print('<tr><td># trace records:</td><td>%s (%.2f%%, %.2f%%/s)</td></tr>' % (n_records, n_records * 100.0 / n_records_max, n_per_sec * 100.0 / n_records_max), file=fh_out)
+    print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning, file=fh_out)
+    print('<tr><td># cores:</td><td>%s</td></tr>' % n_procs, file=fh_out)
+    print('<tr><td>started at:</td><td>%d (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))), file=fh_out)
+    print('<tr><td>stopped at:</td><td>%d (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))), file=fh_out)
+    print('<tr><td>took:</td><td>%fs</td></tr>' % took, file=fh_out)
+    print('</table>', file=fh_out)
 
     if output_type == 'html':
-        print('<a name="double"></a><h2>DOUBLE LOCKS/UNLOCKS</h2>')
-        print('<ul>')
+        print('<a name="double"></a><h2>DOUBLE LOCKS/UNLOCKS</h2>', file=fh_out)
+        print('<ul>', file=fh_out)
 
     else:
-        print(' *** DOUBLE LOCKS/UNLOCKS ***')
-        print('')
+        print(' *** DOUBLE LOCKS/UNLOCKS ***', file=fh_out)
+        print('', file=fh_out)
 
 def mutex_kind_to_str(mk):
     global PTHREAD_MUTEX_NORMAL
@@ -311,29 +322,29 @@ while True:
 
         if j['tid'] in by_who_t and j['lock'] in by_who_t[j['tid']]:
                 if output_type == 'html':
-                    print('<h3>Double lock</h3>')
-                    print('<h4>current</h3>')
-                    print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])))
+                    print('<h3>Double lock</h3>', file=fh_out)
+                    print('<h4>current</h3>', file=fh_out)
+                    print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])), file=fh_out)
                 else:
-                    print('Double lock: ', j['t'], j['lock'], j['tid'], j['thread_name'])
+                    print('Double lock: ', j['t'], j['lock'], j['tid'], j['thread_name'], file=fh_out)
 
                 dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
                 if output_type != 'html':
-                    print('')
+                    print('', file=fh_out)
 
                 old_j = by_who_t[j['tid']][j['lock']]
                 if output_type == 'html':
-                    print('<h4>previous</h3>')
-                    print('<p>index: %s, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (old_j['t'], old_j['tid'], old_j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])))
+                    print('<h4>previous</h3>', file=fh_out)
+                    print('<p>index: %s, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (old_j['t'], old_j['tid'], old_j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])), file=fh_out)
                 else:
-                    print('\t', old_j['t'], old_j['tid'])
+                    print('\t', old_j['t'], old_j['tid'], file=fh_out)
 
                 dump_stacktrace(resolve_addresses(core_file, old_j['caller']), output_type)
 
                 if output_type != 'html':
-                    print('')
-                    print('')
+                    print('', file=fh_out)
+                    print('', file=fh_out)
 
                 any_records = True
 
@@ -372,16 +383,16 @@ while True:
 
             else:
                 if output_type == 'html':
-                    print('<h3>Invalid unlock</h3>')
-                    print('<p>index: %s, mutex: %016x, tid: %s, thread_name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])))
+                    print('<h3>Invalid unlock</h3>', file=fh_out)
+                    print('<p>index: %s, mutex: %016x, tid: %s, thread_name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])), file=fh_out)
                 else:
-                    print('Invalid unlock: ', j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind']))
+                    print('Invalid unlock: ', j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind']), file=fh_out)
 
                 dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
                 if output_type != 'html':
-                    print('')
-                    print('')
+                    print('', file=fh_out)
+                    print('', file=fh_out)
 
                 any_records = True
 
@@ -411,14 +422,14 @@ while True:
         sys.exit(1)
 
 if not any_records:
-    print('<li>---')
+    print('<li>---', file=fh_out)
 
 if output_type == 'html':
-    print('</ul>')
+    print('</ul>', file=fh_out)
 
 else:
-    print('')
-    print('')
+    print('', file=fh_out)
+    print('', file=fh_out)
 
 def pp_record(j, end_ts, ot):
     since_ts = int(j['timestamp'])
@@ -437,51 +448,51 @@ def pp_record(j, end_ts, ot):
     return rc
 
 if output_type == 'html':
-    print('<a name="deadlocks"></a><h2>DEADLOCKS</h2>')
-    print('<ul>')
+    print('<a name="deadlocks"></a><h2>DEADLOCKS</h2>', file=fh_out)
+    print('<ul>', file=fh_out)
 
 else:
-    print(' *** DEADLOCKS ***')
-    print('')
+    print(' *** DEADLOCKS ***', file=fh_out)
+    print('', file=fh_out)
 
 any_dl = False
 
 for d in range(0, len(deadlocks)):
-    print(pp_record(deadlocks[d], end_ts, output_type))
+    print(pp_record(deadlocks[d], end_ts, output_type), file=fh_out)
 
     if output_type == 'html':
-        print('<br>')
+        print('<br>', file=fh_out)
 
     else:
-        print('')
+        print('', file=fh_out)
 
     dump_stacktrace(resolve_addresses(core_file, deadlocks[d]['caller']), output_type)
 
     if output_type == 'html':
-        print('<br>')
+        print('<br>', file=fh_out)
 
     else:
-        print('')
-        print('')
+        print('', file=fh_out)
+        print('', file=fh_out)
 
     any_dl = True
 
 if output_type == 'html':
     if not any_dl:
-        print('<li>---')
+        print('<li>---', file=fh_out)
 
-    print('</ul>')
+    print('</ul>', file=fh_out)
 
 else:
-    print('')
+    print('', file=fh_out)
 
 if output_type == 'html':
-    print('<a name="slmut"></a><h2>STILL LOCKED (grouped by mutex)</h2>')
-    print('<ul>')
+    print('<a name="slmut"></a><h2>STILL LOCKED (grouped by mutex)</h2>', file=fh_out)
+    print('<ul>', file=fh_out)
 
 else:
-    print(' *** STILL LOCKED (by mutex) ***')
-    print('')
+    print(' *** STILL LOCKED (by mutex) ***', file=fh_out)
+    print('', file=fh_out)
 
 any_slm = False
 
@@ -490,41 +501,41 @@ for bw in by_who_m:
         for ri in by_who_m[bw]:
             r = by_who_m[bw][ri]
 
-            print(pp_record(r, end_ts, output_type))
+            print(pp_record(r, end_ts, output_type), file=fh_out)
 
             if output_type == 'html':
-                print('<br>')
+                print('<br>', file=fh_out)
 
             else:
-                print('')
+                print('', file=fh_out)
 
             dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
             if output_type == 'html':
-                print('<br>')
+                print('<br>', file=fh_out)
 
             else:
-                print('')
-                print('')
+                print('', file=fh_out)
+                print('', file=fh_out)
 
             any_slm = True
 
 if output_type == 'html':
     if not any_slm:
-        print('<li>---')
+        print('<li>---', file=fh_out)
 
-    print('</ul>')
+    print('</ul>', file=fh_out)
 
 else:
-    print('')
+    print('', file=fh_out)
 
 if output_type == 'html':
-    print('<a name="sltid"></a><h2>STILL LOCKED (grouped by TID)</h2>')
-    print('<ul>')
+    print('<a name="sltid"></a><h2>STILL LOCKED (grouped by TID)</h2>', file=fh_out)
+    print('<ul>', file=fh_out)
 
 else:
-    print(' *** STILL LOCKED (by TID) ***')
-    print('')
+    print(' *** STILL LOCKED (by TID) ***', file=fh_out)
+    print('', file=fh_out)
 
 any_slt = False
 
@@ -533,63 +544,63 @@ for bw in by_who_t:
         for ri in by_who_t[bw]:
             r = by_who_t[bw][ri]
 
-            print(pp_record(r, end_ts, output_type))
+            print(pp_record(r, end_ts, output_type), file=fh_out)
 
             if output_type == 'html':
-                print('<br>')
+                print('<br>', file=fh_out)
 
             else:
-                print('')
+                print('', file=fh_out)
 
             dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
             if output_type == 'html':
-                print('<br>')
+                print('<br>', file=fh_out)
 
             else:
-                print('')
-                print('')
+                print('', file=fh_out)
+                print('', file=fh_out)
 
             any_slt = True
 
 if output_type == 'html':
     if not any_slt:
-        print('<li>---')
+        print('<li>---', file=fh_out)
 
-    print('</ul>')
+    print('</ul>', file=fh_out)
 
 else:
-    print('')
+    print('', file=fh_out)
 
 if output_type == 'html':
-    print('<a name="lastmutexuse"></a><h2>MUTEX USED LOCATIONS</h2>')
+    print('<a name="lastmutexuse"></a><h2>MUTEX USED LOCATIONS</h2>', file=fh_out)
 
 else:
-    print(' *** MUTEX USED LOCATIONS ***')
-    print('')
+    print(' *** MUTEX USED LOCATIONS ***', file=fh_out)
+    print('', file=fh_out)
 
 temp = state
 temp.update(before)
 
 for r in temp:
     if output_type == 'html':
-        print('<h3>%016x</h3>' % temp[r]['lock'])
-        print('<p>%s</p>' % pp_record(temp[r], end_ts, 'text'))
+        print('<h3>%016x</h3>' % temp[r]['lock'], file=fh_out)
+        print('<p>%s</p>' % pp_record(temp[r], end_ts, 'text'), file=fh_out)
 
     else:
-        print(j['lock'])
-        print(pp_record(temp[r], end_ts, 'text'))
+        print(j['lock'], file=fh_out)
+        print(pp_record(temp[r], end_ts, 'text'), file=fh_out)
 
     dump_stacktrace(resolve_addresses(core_file, temp[r]['caller']), output_type)
 
-    print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[j['lock']])))
+    print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[j['lock']])), file=fh_out)
 
 if output_type == 'html':
-    print('<a name="durations"></a><h2>LOCKING DURATIONS</h2>')
+    print('<a name="durations"></a><h2>LOCKING DURATIONS</h2>', file=fh_out)
 
 else:
-    print(' *** LOCKING DURATIONS ***')
-    print('')
+    print(' *** LOCKING DURATIONS ***', file=fh_out)
+    print('', file=fh_out)
 
 for d in durations:
     n = durations[d][0]
@@ -597,31 +608,31 @@ for d in durations:
     sd = math.sqrt((durations[d][2] / n) - math.pow(avg, 2.0))
 
     if output_type == 'html':
-        print('<h3>mutex: %016x</h3>' % d)
+        print('<h3>mutex: %016x</h3>' % d, file=fh_out)
     else:
-        print(d)
+        print(d, file=fh_out)
 
     if output_type == 'html':
-        print('<table><tr><th>what</th><th>value</th></tr>')
-        print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n)
+        print('<table><tr><th>what</th><th>value</th></tr>', file=fh_out)
+        print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n, file=fh_out)
 
         if d in contended:
-            print('<tr><td>contended:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]))
+            print('<tr><td>contended:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]), file=fh_out)
 
         if d in l_durations and l_durations[d][0]:
             lock_took = l_durations[d][1] / l_durations[d][0]
-            print('<tr><td>average time to take lock:</td><td>%.1fus</td></tr>' % lock_took)
+            print('<tr><td>average time to take lock:</td><td>%.1fus</td></tr>' % lock_took, file=fh_out)
 
-        print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d][6]))
-        print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
-        print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd)
+        print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d][6]), file=fh_out)
+        print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg, file=fh_out)
+        print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd, file=fh_out)
         sorted_list = sorted(durations[d][6])
-        print('<tr><td>mininum:</td><td>%.2fus</td></tr>' % sorted_list[0])
-        print('<tr><td>median:</td><td>%.2fus</td></tr>' % sorted_list[len(sorted_list) // 2])
-        print('<tr><td>maximum:</td><td>%.2fus</td></tr>' % sorted_list[-1])
-        print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][4][1])), durations[d][4][0]))
-        print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][5][1])), durations[d][5][0]))
-        print('</table>')
+        print('<tr><td>mininum:</td><td>%.2fus</td></tr>' % sorted_list[0], file=fh_out)
+        print('<tr><td>median:</td><td>%.2fus</td></tr>' % sorted_list[len(sorted_list) // 2], file=fh_out)
+        print('<tr><td>maximum:</td><td>%.2fus</td></tr>' % sorted_list[-1], file=fh_out)
+        print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][4][1])), durations[d][4][0]), file=fh_out)
+        print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d][5][1])), durations[d][5][0]), file=fh_out)
+        print('</table>', file=fh_out)
 
         # this can be implemented way smarter
         steps = (sorted_list[-1] - sorted_list[0]) / 10
@@ -645,23 +656,25 @@ for d in durations:
             start = next
             next += steps
 
-        print('<p><br></p>')
+        print('<p><br></p>', file=fh_out)
 
-        print('<table><tr><th>range</th><th>count</th></tr>')
+        print('<table><tr><th>range</th><th>count</th></tr>', file=fh_out)
         for s in slots:
-            print('<tr><td>%.2f ... %.2f</td><td>%d</td></tr>' % (s[0], s[0] + steps, s[1]))
-        print('</table>')
+            print('<tr><td>%.2f ... %.2f</td><td>%d</td></tr>' % (s[0], s[0] + steps, s[1]), file=fh_out)
+        print('</table>', file=fh_out)
 
     else:
-        print('\tn: %d, avg: %.6fus, sd: %.6fus</p>' % (n, avg, sd))
-        print('')
+        print('\tn: %d, avg: %.6fus, sd: %.6fus</p>' % (n, avg, sd), file=fh_out)
+        print('', file=fh_out)
 
 if output_type != 'html':
-    print('')
-    print('')
+    print('', file=fh_out)
+    print('', file=fh_out)
 
 if output_type == 'html':
-    print('<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></ht,l>')
+    print('<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></ht,l>', file=fh_out)
 
 else:
-    print('This locktracer is (C) 2021 by Folkert van Heusden <mail@vanheusden.com>')
+    print('This locktracer is (C) 2021 by Folkert van Heusden <mail@vanheusden.com>', file=fh_out)
+
+fh_out.close()
