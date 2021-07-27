@@ -142,6 +142,9 @@ durations = dict()
 used_in_tid = dict()
 deadlocks = []
 
+locked = dict()
+contended = dict()
+
 any_records = False
 
 start_ts = None
@@ -275,6 +278,19 @@ while True:
         if not (j['lock'] in state and (check_by_itself == False or (check_by_itself == True and state[j['lock']][2] == j['tid']))):
             state[j['lock']] = j
 
+        if j['lock'] in locked:
+            locked[j['lock']] += 1
+
+        else:
+            locked[j['lock']] = 1
+
+        if locked[j['lock']] > 1:
+            if j['lock'] in contended:
+                contended[j['lock']] += 1
+
+            else:
+                contended[j['lock']] = 1
+
         if not j['lock'] in by_who_m:
             by_who_m[j['lock']] = dict()
 
@@ -324,6 +340,12 @@ while True:
         if j['lock'] in state:
             before[j['lock']] = state[j['lock']]
             del state[j['lock']]
+
+        if j['lock'] in locked:  # in case of unlock without lock
+            locked[j['lock']] -= 1
+
+            if locked[j['lock']] <= 0:  # '<' in case of double unlocks
+                del locked[j['lock']]
 
         if j['lock'] in by_who_m:
             if j['tid'] in by_who_m[j['lock']]:
@@ -574,6 +596,8 @@ for d in durations:
     if output_type == 'html':
         print('<table><tr><th>what</th><th>value</th></tr>')
         print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n)
+        if d in contended:
+            print('<tr><td>contention:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]))
         print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d][6]))
         print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
         print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd)

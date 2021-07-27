@@ -7,9 +7,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <sys/time.h>
 
-#define TIME 2000000
+#define TIME 1000000
 
 uint64_t get_us()
 {
@@ -17,6 +18,34 @@ uint64_t get_us()
         gettimeofday(&tv, NULL);
 
         return tv.tv_sec * 1000l * 1000l + tv.tv_usec;
+}
+
+void lock_unlock(pthread_mutex_t *const mutex)
+{
+	uint64_t start = get_us();
+
+	do {
+		pthread_mutex_lock(mutex);
+
+		pthread_yield();
+		usleep((random() % 1500) + 5);
+
+		pthread_mutex_unlock(mutex);
+
+		pthread_yield();
+		usleep((random() % 1500) + 5);
+	} while (get_us() - start <= TIME);
+}
+
+void *thread(void *p)
+{
+	pthread_mutex_t *mutex = (pthread_mutex_t *)p;
+
+	pthread_setname_np(pthread_self(), "test-cont");
+
+	lock_unlock(mutex);
+
+	return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -35,6 +64,12 @@ int main(int argc, char *argv[])
 	pthread_mutexattr_destroy(&attr2);
 
 	pthread_setname_np(pthread_self(), "test-main");
+
+	/* try to simulate contention */
+	pthread_t th;
+	pthread_create(&th, NULL, thread, &mutex);
+
+	lock_unlock(&mutex);
 
 	pthread_mutex_lock(&mutex); /* test double lock */
 
