@@ -555,7 +555,7 @@ for d in durations:
     sd = math.sqrt((durations[d][2] / n) - math.pow(avg, 2.0))
 
     if output_type == 'html':
-        print('<h3>mutex: %s</h3>' % d)
+        print('<h3>mutex: %016x</h3>' % d)
     else:
         print(d)
 
