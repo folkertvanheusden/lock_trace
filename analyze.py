@@ -610,7 +610,7 @@ for d in durations:
 
         if d in l_durations and l_durations[d][0]:
             lock_took = l_durations[d][1] / l_durations[d][0]
-            print('<tr><td>average lock-time:</td><td>%.1fus</td></tr>' % lock_took)
+            print('<tr><td>average time to take lock:</td><td>%.1fus</td></tr>' % lock_took)
 
         print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d][6]))
         print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
