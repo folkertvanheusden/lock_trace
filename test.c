@@ -2,6 +2,7 @@
 // released under GPL v3.0
 
 #define __USE_GNU
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -32,6 +33,8 @@ int main(int argc, char *argv[])
 	pthread_mutexattr_settype(&attr2, PTHREAD_MUTEX_ERRORCHECK);
 	pthread_mutex_init(&mutex2, &attr2);
 	pthread_mutexattr_destroy(&attr2);
+
+	pthread_setname_np(pthread_self(), "test-main");
 
 	pthread_mutex_lock(&mutex); /* test double lock */
 

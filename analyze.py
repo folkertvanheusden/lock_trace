@@ -139,6 +139,7 @@ before = dict()
 by_who_m = dict()  # on mutex
 by_who_t = dict()  # on tid
 durations = dict()
+used_in_tid = dict()
 deadlocks = []
 
 any_records = False
@@ -278,6 +279,11 @@ while True:
             by_who_m[j['lock']] = dict()
 
         by_who_m[j['lock']][j['tid']] = j
+
+        if not j['lock'] in used_in_tid:
+            used_in_tid[j['lock']] = set()
+
+        used_in_tid[j['lock']].add('%d (%s)' % (j['tid'], j['thread_name']))
 
         if j['tid'] in by_who_t and j['lock'] in by_who_t[j['tid']]:
                 if output_type == 'html':
@@ -537,7 +543,7 @@ temp.update(before)
 
 for r in temp:
     if output_type == 'html':
-        print('<h3>%s</h3>' % temp[r]['lock'])
+        print('<h3>%016x</h3>' % temp[r]['lock'])
         print('<p>%s</p>' % pp_record(temp[r], end_ts, 'text'))
 
     else:
@@ -545,6 +551,8 @@ for r in temp:
         print(pp_record(temp[r], end_ts, 'text'))
 
     dump_stacktrace(resolve_addresses(core_file, temp[r]['caller']), output_type)
+
+    print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[j['lock']])))
 
 if output_type == 'html':
     print('<a name="durations"></a><h2>LOCKING DURATIONS</h2>')
