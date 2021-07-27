@@ -606,7 +606,7 @@ for d in durations:
         print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n)
 
         if d in contended:
-            print('<tr><td>contented:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]))
+            print('<tr><td>contended:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]))
 
         if d in l_durations and l_durations[d][0]:
             lock_took = l_durations[d][1] / l_durations[d][0]
