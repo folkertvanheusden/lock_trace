@@ -262,7 +262,7 @@ while True:
         l_durations[j['lock']][0] += 1  # n
         l_durations[j['lock']][1] += j['lock_took']  # n
 
-        if not (j['lock'] in state and (check_by_itself == False or (check_by_itself == True and state[j['lock']][2] == j['tid']))):
+        if not (j['lock'] in state and (check_by_itself == False or (check_by_itself == True and state[j['lock']]['tid'] == j['tid']))):
             state[j['lock']] = j
 
         if j['lock'] in locked:
@@ -355,7 +355,7 @@ while True:
         purge = []
 
         for s in state:
-            if state[s][2] == j['tid']:
+            if state[s]['tid'] == j['tid']:
                 purge.append(s)
 
         for p in purge:
