@@ -4,6 +4,7 @@
 # released under GPL v3.0
 
 import getopt
+import json
 import math
 import os
 import sys
@@ -183,8 +184,8 @@ def emit_header():
     print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file)
     print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning)
     print('<tr><td># cores:</td><td>%s</td></tr>' % n_procs)
-    print('<tr><td>started at:</td><td>%s (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))))
-    print('<tr><td>stopped at:</td><td>%s (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))))
+    print('<tr><td>started at:</td><td>%d (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))))
+    print('<tr><td>stopped at:</td><td>%d (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))))
     print('<tr><td>took:</td><td>%fs</td></tr>' % ((end_ts - start_ts) / 1000000))
     print('</table>')
 
@@ -227,63 +228,67 @@ while True:
 
     # t   mutex   tid action    callers timestamp   tid-name    m-count   m-owner   m-kind
     # 0   1       2   3         4       5           6           7         8         9
-    r = line.split()
+    j = json.loads(line)
 
-    if r[0] == 'mutex_types':  # meta
-        PTHREAD_MUTEX_NORMAL = r[1]
-        PTHREAD_MUTEX_RECURSIVE = r[2]
-        PTHREAD_MUTEX_ERRORCHECK = r[3]
+    if j['type'] == 'meta' and 'mutex_type_normal' in j:
+        PTHREAD_MUTEX_NORMAL = j['mutex_type_normal']
 
-    elif r[0] == 'start_ts':  # meta
-        start_ts = int(r[1])
+    elif j['type'] == 'meta' and 'mutex_type_recursive' in j:
+        PTHREAD_MUTEX_RECURSIVE = j['mutex_type_recursive']
 
-    elif r[0] == 'end_ts':  # meta
-        end_ts = int(r[1])
+    elif j['type'] == 'meta' and 'mutex_type_errorcheck' in j:
+        PTHREAD_MUTEX_ERRORCHEK = j['mutex_type_errorcheck']
 
-    elif r[0] == 'exe_name':  # meta
-        exe_name = ' '.join(r[1:]).rstrip('\n')
+    elif j['type'] == 'meta' and 'start_ts' in j:
+        start_ts = j['start_ts']
 
-    elif r[0] == 'fork_warning':  # meta
-        fork_warning = r[1].rstrip('\n') != '0'
+    elif j['type'] == 'meta' and 'end_ts' in j:
+        end_ts = j['end_ts']
 
-    elif r[0] == 'hostname':  # meta
-        hostname = r[1]  # assuming they never have spaces in them
+    elif j['type'] == 'meta' and 'exe_name' in j:
+        exe_name = j['exe_name']
 
-    elif r[0] == 'n_procs':  # meta
-        n_procs = int(r[1])
+    elif j['type'] == 'meta' and 'fork_warning' in j:
+        fork_warning = j['fork_warning']
 
-    elif r[3] == 'lock':
-        resolve_addresses(core_file, r[4])
+    elif j['type'] == 'meta' and 'hostname' in j:
+        hostname = j['hostname']
 
-        if not (r[1] in state and (check_by_itself == False or (check_by_itself == True and state[r[1]][2] == r[2]))):
-            state[r[1]] = r
+    elif j['type'] == 'meta' and 'n_procs' in j:
+        n_procs = j['n_procs']
 
-        if not r[1] in by_who_m:
-            by_who_m[r[1]] = dict()
+    elif j['type'] == 'data' and j['action'] == 'lock':
+        resolve_addresses(core_file, j['caller'])
 
-        by_who_m[r[1]][r[2]] = r
+        if not (j['lock'] in state and (check_by_itself == False or (check_by_itself == True and state[j['lock']][2] == j['tid']))):
+            state[j['lock']] = j
 
-        if r[2] in by_who_t and r[1] in by_who_t[r[2]]:
+        if not j['lock'] in by_who_m:
+            by_who_m[j['lock']] = dict()
+
+        by_who_m[j['lock']][j['tid']] = j
+
+        if j['tid'] in by_who_t and j['lock'] in by_who_t[j['tid']]:
                 if output_type == 'html':
                     print('<h3>Double lock</h3>')
                     print('<h4>current</h3>')
-                    print('<p>index: %s, mutex: %s, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (r[0], r[1], r[2], r[6], r[7], r[8], mutex_kind_to_str(r[9])))
+                    print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])))
                 else:
-                    print('Double lock: ', r[0], r[1], r[2], r[6])
+                    print('Double lock: ', j['t'], j['lock'], j['tid'], j['thread_name'])
 
-                dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
+                dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
                 if output_type != 'html':
                     print('')
 
-                old_r = by_who_t[r[2]][r[1]]
+                old_j = by_who_t[j['tid']][j['lock']]
                 if output_type == 'html':
                     print('<h4>previous</h3>')
-                    print('<p>index: %s, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (old_r[0], old_r[2], old_r[6], r[7], r[8], mutex_kind_to_str(r[9])))
+                    print('<p>index: %s, tid: %s, thread name: %s, count: %s, owner: %s, kind: %s</p>' % (old_j['t'], old_j['tid'], old_j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])))
                 else:
-                    print('\t', old_r[0], old_r[2])
+                    print('\t', old_j['t'], old_j['tid'])
 
-                dump_stacktrace(resolve_addresses(core_file, old_r[4]), output_type)
+                dump_stacktrace(resolve_addresses(core_file, old_j['caller']), output_type)
 
                 if output_type != 'html':
                     print('')
@@ -291,41 +296,41 @@ while True:
 
                 any_records = True
 
-        if not r[2] in by_who_t:
-            by_who_t[r[2]] = dict()
+        if not j['tid'] in by_who_t:
+            by_who_t[j['tid']] = dict()
 
-        by_who_t[r[2]][r[1]] = r
+        by_who_t[j['tid']][j['lock']] = j
 
-    elif r[3] == 'unlock':
-        resolve_addresses(core_file, r[4])
+    elif j['type'] == 'data' and j['action'] == 'unlock':
+        resolve_addresses(core_file, j['caller'])
 
-        if r[1] in state:
-            before[r[1]] = state[r[1]]
-            del state[r[1]]
+        if j['lock'] in state:
+            before[j['lock']] = state[j['lock']]
+            del state[j['lock']]
 
-        if r[1] in by_who_m:
-            if r[2] in by_who_m[r[1]]:
-                took = int(r[5]) - int(by_who_m[r[1]][r[2]][5])  # in s
+        if j['lock'] in by_who_m:
+            if j['tid'] in by_who_m[j['lock']]:
+                took = int(j['timestamp']) - int(by_who_m[j['lock']][j['tid']]['timestamp'])  # in s
 
-                if not r[1] in durations:
-                    durations[r[1]] = [ 0, 0, 0, r[4], (r[0], r[5]), (0, 0), [] ]  # remember the first callback, usage
+                if not j['lock'] in durations:
+                    durations[j['lock']] = [ 0, 0, 0, j['caller'], (j['t'], j['timestamp']), (0, 0), [] ]  # remember the first callback, usage
 
-                durations[r[1]][0] += 1  # n
-                durations[r[1]][1] += took  # avg
-                durations[r[1]][2] += took * took  # sd
-                durations[r[1]][5] = (r[0], r[5])  # latest usage
-                durations[r[1]][6].append(float(took))  # median
+                durations[j['lock']][0] += 1  # n
+                durations[j['lock']][1] += took  # avg
+                durations[j['lock']][2] += took * took  # sd
+                durations[j['lock']][5] = (j['t'], j['timestamp'])  # latest usage
+                durations[j['lock']][6].append(float(took))  # median
 
-                del by_who_m[r[1]][r[2]]
+                del by_who_m[j['lock']][j['tid']]
 
             else:
                 if output_type == 'html':
                     print('<h3>Invalid unlock</h3>')
-                    print('<p>index: %s, mutex: %s, tid: %s, thread_name: %s, count: %s, owner: %s, kind: %s</p>' % (r[0], r[1], r[2], r[6], r[7], r[8], mutex_kind_to_str(r[9])))
+                    print('<p>index: %s, mutex: %016x, tid: %s, thread_name: %s, count: %s, owner: %s, kind: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind'])))
                 else:
-                    print('Invalid unlock: ', r[0], r[1], r[2], r[6], r[7], r[8], mutex_kind_to_str(r[9]))
+                    print('Invalid unlock: ', j['t'], j['lock'], j['tid'], j['thread_name'], j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind']))
 
-                dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
+                dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
                 if output_type != 'html':
                     print('')
@@ -333,29 +338,29 @@ while True:
 
                 any_records = True
 
-        if r[2] in by_who_t:
-            if r[1] in by_who_t[r[2]]:
-                del by_who_t[r[2]][r[1]]
+        if j['tid'] in by_who_t:
+            if j['lock'] in by_who_t[j['tid']]:
+                del by_who_t[j['tid']][j['lock']]
 
-    elif r[3] == 'action':  # header, end of meta data
+    elif j['type'] == 'marker':
         emit_header()
 
-    elif r[3] == 'tclean':  # forget a thread
+    elif j['type'] == 'data' and j['action'] == 'tclean':  # forget a thread
         purge = []
 
         for s in state:
-            if state[s][2] == state[s][2]:
+            if state[s][2] == j['tid']:
                 purge.append(s)
 
         for p in purge:
             before[p] = state[p]
             del state[p]
 
-    elif r[3] == 'deadlock':  # deadlock
-        deadlocks.append(r)
+    elif j['type'] == 'data' and j['action'] == 'deadlock':  # deadlock
+        deadlocks.append(j)
 
     else:
-        print('Unknown action: %s' % r[3])
+        print('Unknown %s action: %s' % (j['type'], j['action']))
         sys.exit(1)
 
 if not any_records:
@@ -368,8 +373,8 @@ else:
     print('')
     print('')
 
-def pp_record(r, end_ts, ot):
-    since_ts = int(r[5])
+def pp_record(j, end_ts, ot):
+    since_ts = int(j['timestamp'])
     since = my_ctime(since_ts)
 
     if not end_ts:
@@ -377,7 +382,7 @@ def pp_record(r, end_ts, ot):
 
     duration = (end_ts - since_ts) / 1000000.0
 
-    rc = 'index: %s, mutex: %s, tid: %s, name: %s, since: %s (%s), locked for %.6fs, count: %s, owner: %s, kind: %s' % (r[0], r[1], r[2], r[6], r[5], since, duration, r[7], r[8], mutex_kind_to_str(r[9]))
+    rc = 'index: %s, mutex: %016x, tid: %s, name: %s, since: %s (%s), locked for %.6fs, count: %s, owner: %s, kind: %s' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['timestamp'], since, duration, j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind']))
 
     if ot == 'html':
         return '<li>%s</li>' % rc
@@ -394,7 +399,7 @@ else:
 
 any_dl = False
 
-for d in deadlocks:
+for d in range(0, len(deadlocks)):
     print(pp_record(deadlocks[d], end_ts, output_type))
 
     if output_type == 'html':
@@ -403,7 +408,7 @@ for d in deadlocks:
     else:
         print('')
 
-    dump_stacktrace(resolve_addresses(core_file, deadlocks[d][4]), output_type)
+    dump_stacktrace(resolve_addresses(core_file, deadlocks[d]['caller']), output_type)
 
     if output_type == 'html':
         print('<br>')
@@ -446,7 +451,7 @@ for bw in by_who_m:
             else:
                 print('')
 
-            dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
+            dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
             if output_type == 'html':
                 print('<br>')
@@ -489,7 +494,7 @@ for bw in by_who_t:
             else:
                 print('')
 
-            dump_stacktrace(resolve_addresses(core_file, r[4]), output_type)
+            dump_stacktrace(resolve_addresses(core_file, j['caller']), output_type)
 
             if output_type == 'html':
                 print('<br>')
@@ -521,14 +526,14 @@ temp.update(before)
 
 for r in temp:
     if output_type == 'html':
-        print('<h3>%s</h3>' % temp[r][1])
+        print('<h3>%s</h3>' % temp[r]['lock'])
         print('<p>%s</p>' % pp_record(temp[r], end_ts, 'text'))
 
     else:
-        print(r[1])
+        print(j['lock'])
         print(pp_record(temp[r], end_ts, 'text'))
 
-    dump_stacktrace(resolve_addresses(core_file, temp[r][4]), output_type)
+    dump_stacktrace(resolve_addresses(core_file, temp[r]['caller']), output_type)
 
 if output_type == 'html':
     print('<a name="durations"></a><h2>LOCKING DURATIONS</h2>')

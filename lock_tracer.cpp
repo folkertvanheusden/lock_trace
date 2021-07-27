@@ -353,12 +353,13 @@ void emit_key_value(FILE *fh, const char *key, const char *value)
 
 void emit_key_value(FILE *fh, const char *key, const uint64_t value)
 {
-	char *value_str = nullptr;
-	asprintf(&value_str, "%lu", value);
+	json_t *obj = json_object();
+	json_object_set(obj, "type", json_string("meta"));
+	json_object_set(obj, key, json_integer(value));
 
-	emit_key_value(fh, key, value_str);
+	fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
 
-	free(value_str);
+	json_decref(obj);
 }
 
 void exit(int status)
@@ -418,6 +419,11 @@ void exit(int status)
 		if (n_rec_inserted > n_records)
 			n_rec_inserted = n_records;
 
+		json_t *m_obj = json_object();
+		json_object_set(m_obj, "type", json_string("marker"));
+		fprintf(fh, "%s\n", json_dumps(m_obj, JSON_COMPACT));
+		json_decref(m_obj);
+
 		for(uint64_t i = 0; i<n_rec_inserted; i++) {
 			caller_str[0] = 0x00;
 
@@ -458,10 +464,8 @@ void exit(int status)
 				name[1] = 0x00;
 			}
 
-			// fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\tt-name\tcount\towner\tkind\n");
 			json_t *obj = json_object();
 			json_object_set(obj, "type", json_string("data"));
-
 			json_object_set(obj, "t", json_integer(i));
 			json_object_set(obj, "lock", json_integer((long long unsigned int)items[i].lock));
 			json_object_set(obj, "tid", json_integer(items[i].tid));
@@ -473,9 +477,7 @@ void exit(int status)
 			json_object_set(obj, "mutex_count", json_integer(items[i].mutex_innards.__count));
 			json_object_set(obj, "mutex_owner", json_integer(items[i].mutex_innards.__owner));
 			json_object_set(obj, "mutex_kind", json_integer(items[i].mutex_innards.__kind));
-
 			fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
-
 			json_decref(obj);
 		}
 
