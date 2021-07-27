@@ -58,7 +58,6 @@
 #define unlikely(x)     __builtin_expect((x),0)
 
 uint64_t n_records = 16777216;
-bool limit_reached = false;
 size_t length = 0;
 
 bool fork_warning = false;
@@ -83,7 +82,7 @@ uint64_t get_us()
 
 uint64_t start_ts = get_us();
 
-typedef enum { a_lock, a_unlock, a_thread_clean, a_deadlock } lock_action_t;
+typedef enum { a_lock, a_unlock, a_thread_clean, a_deadlock, a_r_lock, a_w_lock, a_rw_unlock } lock_action_t;
 
 typedef struct {
 #ifdef WITH_BACKTRACE
@@ -97,17 +96,27 @@ typedef struct {
 	// the one in linux is said to be max. 16 characters including 0x00 (pthread_setname_np)
 	char thread_name[16];
 #endif
-	struct {
-		unsigned int __count;
-		int __owner;
-		int __kind;
-	} mutex_innards;
+	union {
+		struct {
+			unsigned int __count;
+			int __owner;
+			int __kind;
+		} mutex_innards;
+
+		struct {
+			unsigned int __readers;
+			unsigned int __writers;
+			int __cur_writer;  // only on __x86_64__
+		} rwlock_innards;
+	};
+
 	uint64_t lock_took;
 } lock_trace_item_t;
 
 std::atomic_uint64_t idx { 0 };
 lock_trace_item_t *items = nullptr;
 
+// assuming atomic 8-byte pointer updates
 typedef int (* org_pthread_mutex_lock)(pthread_mutex_t *mutex);
 org_pthread_mutex_lock org_pthread_mutex_lock_h = nullptr;
 
@@ -126,6 +135,15 @@ org_pthread_setname_np org_pthread_setname_np_h = nullptr;
 typedef pid_t (* org_fork)(void);
 org_fork org_fork_h = nullptr;
 
+typedef int (* org_pthread_rwlock_rdlock)(pthread_rwlock_t *rwlock);
+org_pthread_rwlock_rdlock org_pthread_rwlock_rdlock_h = nullptr;
+
+typedef int (* org_pthread_rwlock_wrlock)(pthread_rwlock_t *rwlock);
+org_pthread_rwlock_wrlock org_pthread_rwlock_wrlock_h = nullptr;
+
+typedef int (* org_pthread_rwlock_unlock)(pthread_rwlock_t *rwlock);
+org_pthread_rwlock_unlock org_pthread_rwlock_unlock_h = nullptr;
+
 std::map<int, std::string> *tid_names = nullptr;
 
 int _gettid()
@@ -135,20 +153,35 @@ int _gettid()
 
 thread_local bool prevent_backtrace = false;
 
+void show_items_buffer_not_allocated_error()
+{
+	static bool error_shown = false;
+
+	if (!error_shown) {
+		color("\033[0;31m");
+		fprintf(stderr, "Buffer not (yet) allocated?!\n");
+		color("\033[0m");
+		error_shown = true;
+	}
+}
+
+void show_items_buffer_full_error()
+{
+	static bool error_shown = false;
+
+	if (!error_shown) {
+		color("\033[0;31m");
+		fprintf(stderr, "Trace buffer full\n");
+		color("\033[0m");
+	}
+}
+
 void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
 {
 	if (unlikely(!items)) {
 		// when a constructor of some other library already invokes e.g. pthread_mutex_lock
 		// before this wrapper has been fully initialized
-		static bool error_shown = false;
-
-		if (!error_shown) {
-			color("\033[0;31m");
-			fprintf(stderr, "Buffer not (yet) allocated?!\n");
-			color("\033[0m");
-			error_shown = true;
-		}
-
+		show_items_buffer_not_allocated_error();
 		return;
 	}
 
@@ -188,11 +221,8 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
 
 		items[cur_idx].lock_took = took;
 	}
-	else if (!limit_reached) {
-		limit_reached = true;
-		color("\033[0;31m");
-		fprintf(stderr, "Trace buffer full\n");
-		color("\033[0m");
+	else {
+		show_items_buffer_full_error();
 	}
 }
 
@@ -222,11 +252,8 @@ void pthread_exit(void *retval)
 			items[cur_idx].timestamp = get_us();
 #endif
 		}
-		else if (!limit_reached) {
-			limit_reached = true;
-			color("\033[0;31m");
-			fprintf(stderr, "Trace buffer full\n");
-			color("\033[0m");
+		else {
+			show_items_buffer_full_error();
 		}
 	}
 
@@ -285,6 +312,107 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 		store_mutex_info(mutex, a_unlock, 0);
 	else if (rc == EDEADLK)
 		store_mutex_info(mutex, a_deadlock, 0);
+
+	return rc;
+}
+
+void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took)
+{
+	if (unlikely(!items)) {
+		show_items_buffer_not_allocated_error();
+		return;
+	}
+
+	uint64_t cur_idx = idx++;
+
+	if (likely(cur_idx < n_records)) {
+#ifdef WITH_BACKTRACE
+		bool get_backtrace = !prevent_backtrace;
+
+		if (likely(get_backtrace)) {
+#ifdef PREVENT_RECURSION
+			prevent_backtrace = true;
+#endif
+			backtrace(items[cur_idx].caller, CALLER_DEPTH);
+#ifdef PREVENT_RECURSION
+			prevent_backtrace = false;
+#endif
+		}
+#endif
+		items[cur_idx].lock = rwlock;
+		items[cur_idx].tid = _gettid();
+		items[cur_idx].la = la;
+#ifdef WITH_TIMESTAMP
+		items[cur_idx].timestamp = get_us();
+#endif
+#ifdef STORE_THREAD_NAME
+		if (likely(tid_names != nullptr)) {
+			auto it = tid_names->find(items[cur_idx].tid);
+			if (it != tid_names->end())
+				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+		}
+#endif
+
+			items[cur_idx].rwlock_innards.__readers = rwlock->__data.__readers;
+			items[cur_idx].rwlock_innards.__writers = rwlock->__data.__writers;
+#if __x86_64__
+			items[cur_idx].rwlock_innards.__cur_writer  = rwlock->__data.__cur_writer;
+#else
+			items[cur_idx].rwlock_innards.__cur_writer  = 0;
+#endif
+
+		items[cur_idx].lock_took = took;
+	}
+	else {
+		show_items_buffer_full_error();
+	}
+}
+
+int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
+{
+	if (unlikely(!org_pthread_rwlock_rdlock_h))
+		org_pthread_rwlock_rdlock_h = (org_pthread_rwlock_rdlock)dlsym(RTLD_NEXT, "pthread_rwlock_rdlock");
+
+	uint64_t start_ts = get_us();
+	int rc = (*org_pthread_rwlock_rdlock_h)(rwlock);
+	uint64_t end_ts = get_us();
+
+	if (likely(rc == 0))
+		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
+	else if (rc == EDEADLK)
+		store_rwlock_info(rwlock, a_deadlock, 0);
+
+	return rc;
+}
+
+int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
+{
+	if (unlikely(!org_pthread_rwlock_wrlock_h))
+		org_pthread_rwlock_wrlock_h = (org_pthread_rwlock_wrlock)dlsym(RTLD_NEXT, "pthread_rwlock_wrlock");
+
+	uint64_t start_ts = get_us();
+	int rc = (*org_pthread_rwlock_wrlock_h)(rwlock);
+	uint64_t end_ts = get_us();
+
+	if (likely(rc == 0))
+		store_rwlock_info(rwlock, a_w_lock, 0);
+	else if (rc == EDEADLK)
+		store_rwlock_info(rwlock, a_deadlock, 0);
+
+	return rc;
+}
+
+int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
+{
+	if (unlikely(!org_pthread_rwlock_unlock_h))
+		org_pthread_rwlock_unlock_h = (org_pthread_rwlock_unlock)dlsym(RTLD_NEXT, "pthread_rwlock_unlock");
+
+	int rc = (*org_pthread_rwlock_unlock_h)(rwlock);
+
+	if (likely(rc == 0))
+		store_rwlock_info(rwlock, a_rw_unlock, 0);
+	else if (rc == EDEADLK)
+		store_rwlock_info(rwlock, a_deadlock, 0);
 
 	return rc;
 }
@@ -452,6 +580,7 @@ void exit(int status)
 #endif
 
 			const char *action_name = "?";
+			bool rw_lock = false;
 
 			if (items[i].la == a_lock)
 				action_name = "lock";
@@ -461,6 +590,12 @@ void exit(int status)
 				action_name = "tclean";
 			else if (items[i].la == a_deadlock)
 				action_name = "deadlock";
+			else if (items[i].la == a_r_lock)
+				action_name = "readlock", rw_lock = true;
+			else if (items[i].la == a_w_lock)
+				action_name = "writelock", rw_lock = true;
+			else if (items[i].la == a_rw_unlock)
+				action_name = "rwunlock", rw_lock = true;
 
 #ifdef STORE_THREAD_NAME
 			char *name = items[i].thread_name;
@@ -489,10 +624,18 @@ void exit(int status)
 			json_object_set(obj, "timestamp", json_integer(items[i].timestamp));
 			json_object_set(obj, "thread_name", json_string(name));
 			json_object_set(obj, "lock_took", json_integer(items[i].lock_took));
-			// FIXME only for mutex, not r/w locks
-			json_object_set(obj, "mutex_count", json_integer(items[i].mutex_innards.__count));
-			json_object_set(obj, "mutex_owner", json_integer(items[i].mutex_innards.__owner));
-			json_object_set(obj, "mutex_kind", json_integer(items[i].mutex_innards.__kind));
+
+			if (rw_lock) {
+				json_object_set(obj, "rwlock_readers", json_integer(items[i].rwlock_innards.__readers));
+				json_object_set(obj, "rwlock_writers", json_integer(items[i].rwlock_innards.__writers));
+				json_object_set(obj, "cur_writer",     json_integer(items[i].rwlock_innards.__cur_writer));
+			}
+			else {
+				json_object_set(obj, "mutex_count", json_integer(items[i].mutex_innards.__count));
+				json_object_set(obj, "mutex_owner", json_integer(items[i].mutex_innards.__owner));
+				json_object_set(obj, "mutex_kind",  json_integer(items[i].mutex_innards.__kind));
+			}
+
 			fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
 			json_decref(obj);
 		}
