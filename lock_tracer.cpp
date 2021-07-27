@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <execinfo.h>
+#include <limits.h>
 #include <map>
 #include <pthread.h>
 #include <stdio.h>
@@ -52,6 +53,8 @@ uint64_t n_records = 16777216;
 bool limit_reached = false;
 size_t length = 0;
 
+bool fork_warning = false;
+
 void color(const char *str)
 {
 	if (isatty(fileno(stderr)))
@@ -65,6 +68,8 @@ uint64_t get_us()
 
         return tv.tv_sec * 1000l * 1000l + tv.tv_usec;
 }
+
+uint64_t start_ts = get_us();
 
 typedef enum { a_lock, a_unlock, a_thread_clean, a_deadlock } lock_action_t;
 
@@ -104,6 +109,9 @@ org_pthread_exit org_pthread_exit_h = nullptr;
 
 typedef int (* org_pthread_setname_np)(pthread_t thread, const char *name);
 org_pthread_setname_np org_pthread_setname_np_h = nullptr;
+
+typedef pid_t (* org_fork)(void);
+org_fork org_fork_h = nullptr;
 
 std::map<int, std::string> *tid_names = nullptr;
 
@@ -171,6 +179,16 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 		fprintf(stderr, "Trace buffer full\n");
 		color("\033[0m");
 	}
+}
+
+pid_t fork(void)
+{
+	if (unlikely(!org_fork_h))
+		org_fork_h = (org_fork)dlsym(RTLD_NEXT, "fork");
+
+	fork_warning = true;
+
+	return fork();
 }
 
 #ifdef CAPTURE_PTHREAD_EXIT
@@ -304,11 +322,13 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	}
 
 	// FIXME intercept:
-	// 	int pthread_mutex_trylock(pthread_mutex_t *mutex);
 	//	int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
+	//	int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock);
+	//	int pthread_rwlock_timedrdlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
+	//	int pthread_rwlock_timedwrlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
 
 	color("\033[0m");
 }
@@ -339,9 +359,18 @@ void exit(int status)
 		if (!fh)
 			fh = stderr;
 
+		fprintf(fh, "start_ts %lu\n", start_ts);
+
 		fprintf(fh, "end_ts %lu\n", end_ts);
 
+		fprintf(fh, "fork_warning %d\n", fork_warning);
+
 		fprintf(fh, "mutex_types %d %d %d\n", PTHREAD_MUTEX_NORMAL, PTHREAD_MUTEX_RECURSIVE, PTHREAD_MUTEX_ERRORCHECK);
+
+		char exe_name[PATH_MAX] = { 0 };
+		readlink("/proc/self/exe", exe_name, sizeof(exe_name) - 1);
+
+		fprintf(fh, "exe_name %s\n", exe_name);
 
 		fprintf(fh, "t\tmutex\ttid\taction\tcall chain\ttimestamp\tt-name\tcount\towner\tkind\n");
 

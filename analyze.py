@@ -19,6 +19,8 @@ human_friendly_backtrace = False
 
 output_type = 'text'
 
+exe_name = '?'
+
 try:
     opts, args = getopt.getopt(sys.argv[1:], "c:t:r:bo:", ["core=", "trace=", "resolver=", "human-backtrace", "output-type="])
 except getopt.GetoptError as err:
@@ -44,26 +46,6 @@ for o, a in opts:
 
     else:
         assert False, "unhandled option"
-
-if output_type == 'html':
-    print('<!DOCTYPE html>\n<html><head>')
-    print('<style>table{font-size:16px;font-family:"Trebuchet MS",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>')
-    print('<title>lock trace</title></head><body>')
-    print('<h1>LOCK TRACE</h1>')
-
-    print('<p>Core file: %s<br>Trace file: %s</p>' % (core_file, trace_file))
-
-    print('<ul>')
-    print('<li><a href="#double">double locks/unlocks</a>')
-    print('<li><a href="#deadlocks">deadlocks</a>')
-    print('<li><a href="#slmut">still locked - grouped by mutex</a>')
-    print('<li><a href="#sltid">still locked - grouped by TID</a>')
-    print('<li><a href="#durations">locking durations</a>')
-    print('<li><a href="#lastmutexuse">where were mutexes used last</a>')
-    print('</ul>')
-
-else:
-    print(' +++ lock trace +++')
 
 check_by_itself = False  # only (when True) check for "locked by itself earlier"
 
@@ -158,19 +140,59 @@ by_who_t = dict()  # on tid
 durations = dict()
 deadlocks = []
 
-if output_type == 'html':
-    print('<a name="double"></a><h2>DOUBLE LOCKS/UNLOCKS</h2>')
-    print('<ul>')
-
-else:
-    print(' *** DOUBLE LOCKS/UNLOCKS ***')
-    print('')
-
 any_records = False
 
+start_ts = None
 end_ts = None
 
 PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_ERRORCHECK = None
+
+def my_ctime(ts):
+    dt = time.localtime(ts // 1000000)
+
+    return '%04d-%02d-%02d %02d:%02d:%02d.%06d' % (dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, ts % 1000000)
+
+def emit_header():
+    global start_ts
+    global end_ts
+
+    if output_type == 'html':
+        print('<!DOCTYPE html>\n<html><head>')
+        print('<style>table{font-size:16px;font-family:"Trebuchet MS",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>')
+        print('<title>lock trace</title></head><body>')
+        print('<h1>LOCK TRACE</h1>')
+        print('<h2>table of contents</h2>')
+        print('<ul>')
+        print('<li><a href="#meta">meta data</a>')
+        print('<li><a href="#double">double locks/unlocks</a>')
+        print('<li><a href="#deadlocks">deadlocks</a>')
+        print('<li><a href="#slmut">still locked - grouped by mutex</a>')
+        print('<li><a href="#sltid">still locked - grouped by TID</a>')
+        print('<li><a href="#durations">locking durations</a>')
+        print('<li><a href="#lastmutexuse">where were mutexes used last</a>')
+        print('</ul>')
+
+    else:
+        print(' +++ lock trace +++')
+
+    print('<a name="meta"></a><h2>META DATA</h2>')
+    print('<table><tr><th colspan=2>meta data</th></tr>')
+    print('<tr><td>executable:</td><td>%s</td></tr>' % exe_name)
+    print('<tr><td>core file:</td><td>%s</td></tr>' % core_file)
+    print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file)
+    print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning)
+    print('<tr><td>started at:</td><td>%s (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))))
+    print('<tr><td>stopped at:</td><td>%s (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))))
+    print('<tr><td>took:</td><td>%fs</td></tr>' % ((end_ts - start_ts) / 1000000))
+    print('</table>')
+
+    if output_type == 'html':
+        print('<a name="double"></a><h2>DOUBLE LOCKS/UNLOCKS</h2>')
+        print('<ul>')
+
+    else:
+        print(' *** DOUBLE LOCKS/UNLOCKS ***')
+        print('')
 
 def mutex_kind_to_str(mk):
     global PTHREAD_MUTEX_NORMAL
@@ -210,8 +232,17 @@ while True:
         PTHREAD_MUTEX_RECURSIVE = r[2]
         PTHREAD_MUTEX_ERRORCHECK = r[3]
 
+    elif r[0] == 'start_ts':  # meta
+        start_ts = int(r[1])
+
     elif r[0] == 'end_ts':  # meta
         end_ts = int(r[1])
+
+    elif r[0] == 'exe_name':  # meta
+        exe_name = ' '.join(r[1:]).rstrip('\n')
+
+    elif r[0] == 'fork_warning':  # meta
+        fork_warning = r[1].rstrip('\n') != '0'
 
     elif r[3] == 'lock':
         resolve_addresses(core_file, r[4])
@@ -298,8 +329,8 @@ while True:
             if r[1] in by_who_t[r[2]]:
                 del by_who_t[r[2]][r[1]]
 
-    elif r[3] == 'action':  # header
-        pass
+    elif r[3] == 'action':  # header, end of meta data
+        emit_header()
 
     elif r[3] == 'tclean':  # forget a thread
         purge = []
@@ -328,11 +359,6 @@ if output_type == 'html':
 else:
     print('')
     print('')
-
-def my_ctime(ts):
-    dt = time.localtime(ts // 1000000)
-
-    return '%04d-%02d-%02d %02d:%02d:%02d.%06d' % (dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, ts % 1000000)
 
 def pp_record(r, end_ts, ot):
     since_ts = int(r[5])
