@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <bits/pthreadtypes.h>
 #include <bits/struct_mutex.h>
@@ -70,10 +71,14 @@ void color(const char *str)
 
 uint64_t get_us()
 {
-        struct timeval tv = { 0, 0 };
-        gettimeofday(&tv, NULL);
+	struct timespec tp { 0 };
 
-        return tv.tv_sec * 1000l * 1000l + tv.tv_usec;
+	if (clock_gettime(CLOCK_MONOTONIC, &tp) == -1) {
+		perror("clock_gettime");
+		return 0;
+	}
+
+        return tp.tv_sec * 1000l * 1000l + tp.tv_nsec / 1000;
 }
 
 uint64_t start_ts = get_us();
@@ -97,6 +102,7 @@ typedef struct {
 		int __owner;
 		int __kind;
 	} mutex_innards;
+	uint64_t lock_took;
 } lock_trace_item_t;
 
 std::atomic_uint64_t idx { 0 };
@@ -129,7 +135,7 @@ int _gettid()
 
 thread_local bool prevent_backtrace = false;
 
-void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
+void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
 {
 	if (unlikely(!items)) {
 		// when a constructor of some other library already invokes e.g. pthread_mutex_lock
@@ -179,6 +185,8 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la)
 		items[cur_idx].mutex_innards.__count = mutex->__data.__count;
 		items[cur_idx].mutex_innards.__owner = mutex->__data.__owner;
 		items[cur_idx].mutex_innards.__kind  = mutex->__data.__kind;
+
+		items[cur_idx].lock_took = took;
 	}
 	else if (!limit_reached) {
 		limit_reached = true;
@@ -239,12 +247,14 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	if (unlikely(!org_pthread_mutex_lock_h))
 		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 
+	uint64_t start_ts = get_us();
 	int rc = (*org_pthread_mutex_lock_h)(mutex);
+	uint64_t end_ts = get_us();
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_lock);
+		store_mutex_info(mutex, a_lock, end_ts - start_ts);
 	else if (rc == EDEADLK)
-		store_mutex_info(mutex, a_deadlock);
+		store_mutex_info(mutex, a_deadlock, 0);
 
 	return rc;
 }
@@ -257,9 +267,9 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_lock);
+		store_mutex_info(mutex, a_lock, 0);
 	else if (rc == EDEADLK)
-		store_mutex_info(mutex, a_deadlock);
+		store_mutex_info(mutex, a_deadlock, 0);
 
 	return rc;
 }
@@ -272,9 +282,9 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 	int rc = (*org_pthread_mutex_unlock_h)(mutex);
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_unlock);
+		store_mutex_info(mutex, a_unlock, 0);
 	else if (rc == EDEADLK)
-		store_mutex_info(mutex, a_deadlock);
+		store_mutex_info(mutex, a_deadlock, 0);
 
 	return rc;
 }
@@ -478,6 +488,7 @@ void exit(int status)
 			json_object_set(obj, "caller", json_string(caller_str));
 			json_object_set(obj, "timestamp", json_integer(items[i].timestamp));
 			json_object_set(obj, "thread_name", json_string(name));
+			json_object_set(obj, "lock_took", json_integer(items[i].lock_took));
 			// FIXME only for mutex, not r/w locks
 			json_object_set(obj, "mutex_count", json_integer(items[i].mutex_innards.__count));
 			json_object_set(obj, "mutex_owner", json_integer(items[i].mutex_innards.__owner));

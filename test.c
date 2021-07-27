@@ -8,16 +8,21 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/time.h>
 
 #define TIME 1000000
 
 uint64_t get_us()
 {
-        struct timeval tv = { 0, 0 };
-        gettimeofday(&tv, NULL);
+        struct timespec tp = { 0, 0 };
 
-        return tv.tv_sec * 1000l * 1000l + tv.tv_usec;
+        if (clock_gettime(CLOCK_MONOTONIC, &tp) == -1) {
+                perror("clock_gettime");
+                return 0;
+	}
+
+        return tp.tv_sec * 1000l * 1000l + tp.tv_nsec / 1000;
 }
 
 void lock_unlock(pthread_mutex_t *const mutex)

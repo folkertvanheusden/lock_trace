@@ -139,6 +139,7 @@ before = dict()
 by_who_m = dict()  # on mutex
 by_who_t = dict()  # on tid
 durations = dict()
+l_durations = dict()
 used_in_tid = dict()
 deadlocks = []
 
@@ -274,6 +275,13 @@ while True:
 
     elif j['type'] == 'data' and j['action'] == 'lock':
         resolve_addresses(core_file, j['caller'])
+
+        # cannot use 'durations' in case unlocks are performed more often than locks
+        if not j['lock'] in l_durations:
+            l_durations[j['lock']] = [ 0, 0 ]
+
+        l_durations[j['lock']][0] += 1  # n
+        l_durations[j['lock']][1] += j['lock_took']  # n
 
         if not (j['lock'] in state and (check_by_itself == False or (check_by_itself == True and state[j['lock']][2] == j['tid']))):
             state[j['lock']] = j
@@ -596,8 +604,14 @@ for d in durations:
     if output_type == 'html':
         print('<table><tr><th>what</th><th>value</th></tr>')
         print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n)
+
         if d in contended:
-            print('<tr><td>contention:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]))
+            print('<tr><td>contented:</td><td>%.2f%% (%d)</td></tr>' % (contended[d] * 100.0 / n, contended[d]))
+
+        if d in l_durations and l_durations[d][0]:
+            lock_took = l_durations[d][1] / l_durations[d][0]
+            print('<tr><td>average lock-time:</td><td>%.1fus</td></tr>' % lock_took)
+
         print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d][6]))
         print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg)
         print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd)
