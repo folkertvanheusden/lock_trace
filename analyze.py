@@ -423,8 +423,8 @@ while True:
             rw_l_durations[j['lock']] = dict()
             rw_l_durations[j['lock']]['n'] = rw_l_durations[j['lock']]['sum_took'] = 0
 
-        l_durations[j['lock']]['n'] += 1  # n
-        l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
+        rw_l_durations[j['lock']]['n'] += 1  # n
+        rw_l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
 
         if j['lock'] in rw_locked:
             rw_locked[j['lock']] += 1
