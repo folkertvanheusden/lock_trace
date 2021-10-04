@@ -62,7 +62,7 @@ def resolve_addresses(core_file, chain):
     global resolver
     global resolver_cache
 
-    if core_file == None:
+    if core_file is None:
         return
 
     chain_symbols = []
