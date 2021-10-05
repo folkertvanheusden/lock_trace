@@ -53,10 +53,12 @@ void *thread(void *p)
 	return NULL;
 }
 
-int main(int argc, char *argv[])
+void test_mutex()
 {
 	pthread_mutex_t mutex, mutex2;
 	pthread_mutexattr_t attr, attr2;
+
+	pthread_setname_np(pthread_self(), "test-mutex");
 
 	pthread_mutexattr_init(&attr);
 	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
@@ -67,8 +69,6 @@ int main(int argc, char *argv[])
 	pthread_mutexattr_settype(&attr2, PTHREAD_MUTEX_ERRORCHECK);
 	pthread_mutex_init(&mutex2, &attr2);
 	pthread_mutexattr_destroy(&attr2);
-
-	pthread_setname_np(pthread_self(), "test-main");
 
 	/* try to simulate contention */
 	pthread_t th;
@@ -106,6 +106,42 @@ int main(int argc, char *argv[])
 
 	pthread_mutex_lock(&mutex2); /* test deadlock */
 	pthread_mutex_lock(&mutex2);
+}
+
+void test_rwlock()
+{
+	pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
+
+	pthread_setname_np(pthread_self(), "test-rwlock");
+
+	pthread_rwlock_rdlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);
+
+	pthread_rwlock_wrlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);
+
+	pthread_rwlock_wrlock(&rwlock);
+	pthread_rwlock_wrlock(&rwlock);
+
+	pthread_rwlock_unlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);
+
+	pthread_rwlock_rdlock(&rwlock);
+	pthread_rwlock_rdlock(&rwlock);
+
+	pthread_rwlock_unlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);
+}
+
+int main(int argc, char *argv[])
+{
+	test_mutex();
+
+	test_rwlock();
+
+	pthread_setname_np(pthread_self(), "main");
 
 	exit(0);  // trigger dump in trace library
 }
