@@ -48,7 +48,7 @@ If possible(!), modify your program that it invokes exit(0)
 before clean-up. In exit(0) (or regular exit) a dump will be
 made of the trace (to be analyzed later with 'analyze.py').
 If you do this before all data is freed, then analysis by
-yourself later on of the core-file will be more easy. Like
+yourself later on of the core-file will be easier. Like
 finding information about mutexes.
 
 You can change the maximum number of trace records by
@@ -100,7 +100,7 @@ valgrind with helgrind         :    89k/s
 ```
 
 Note: valgrind affects *all* performance while lock_tracer only
-affects the locking/unlocking calls!
+affects the locking/unlocking calls.
 
 
 similar software
@@ -111,5 +111,3 @@ similar software
 
 (C) 2021 by folkert@vanheusden.com
 Released under Apache license v2.0.
-
-If you like to thank me, please be kind to other living things instead.

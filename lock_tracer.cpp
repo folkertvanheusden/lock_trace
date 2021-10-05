@@ -239,7 +239,7 @@ pid_t fork(void)
 
 	fork_warning = true;
 
-	return fork();
+	return (*org_fork_h)();
 }
 
 #ifdef CAPTURE_PTHREAD_EXIT
