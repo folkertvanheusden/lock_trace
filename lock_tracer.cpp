@@ -120,6 +120,12 @@ typedef struct {
 std::atomic_uint64_t items_idx { 0 };
 lock_trace_item_t *items = nullptr;
 
+std::atomic_uint64_t cnt_mutex_trylock { 0 };
+std::atomic_uint64_t cnt_rwlock_try_rdlock { 0 };
+std::atomic_uint64_t cnt_rwlock_try_timedrdlock { 0 };
+std::atomic_uint64_t cnt_rwlock_try_wrlock { 0 };
+std::atomic_uint64_t cnt_rwlock_try_timedwrlock { 0 };
+
 // assuming atomic 8-byte pointer updates
 typedef int (* org_pthread_mutex_lock)(pthread_mutex_t *mutex);
 org_pthread_mutex_lock org_pthread_mutex_lock_h = nullptr;
@@ -314,6 +320,8 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 	if (unlikely(!org_pthread_mutex_trylock_h))
 		org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
+	cnt_mutex_trylock++;
+
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
 	if (likely(rc == 0))
@@ -413,6 +421,8 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 	if (unlikely(!org_pthread_rwlock_tryrdlock_h))
 		org_pthread_rwlock_tryrdlock_h = (org_pthread_rwlock_tryrdlock)dlsym(RTLD_NEXT, "pthread_rwlock_tryrdlock");
 
+	cnt_rwlock_try_rdlock++;
+
 	uint64_t start_ts = get_us();
 	int rc = (*org_pthread_rwlock_tryrdlock_h)(rwlock);
 	uint64_t end_ts = get_us();
@@ -429,6 +439,8 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 {
 	if (unlikely(!org_pthread_rwlock_timedrdlock_h))
 		org_pthread_rwlock_timedrdlock_h = (org_pthread_rwlock_timedrdlock)dlsym(RTLD_NEXT, "pthread_rwlock_timedrdlock");
+
+	cnt_rwlock_try_timedrdlock++;
 
 	uint64_t start_ts = get_us();
 	int rc = (*org_pthread_rwlock_timedrdlock_h)(rwlock, abstime);
@@ -461,10 +473,31 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
+int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
+{
+	if (unlikely(!org_pthread_rwlock_trywrlock_h))
+		org_pthread_rwlock_trywrlock_h = (org_pthread_rwlock_trywrlock)dlsym(RTLD_NEXT, "pthread_rwlock_trywrlock");
+
+	cnt_rwlock_try_wrlock++;
+
+	uint64_t start_ts = get_us();
+	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
+	uint64_t end_ts = get_us();
+
+	if (likely(rc == 0))
+		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
+	else if (rc == EDEADLK)
+		store_rwlock_info(rwlock, a_deadlock, 0);
+
+	return rc;
+}
+
 int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *abstime)
 {
 	if (unlikely(!org_pthread_rwlock_timedwrlock_h))
 		org_pthread_rwlock_timedwrlock_h = (org_pthread_rwlock_timedwrlock)dlsym(RTLD_NEXT, "pthread_rwlock_timedwrlock");
+
+	cnt_rwlock_try_timedwrlock++;
 
 	uint64_t start_ts = get_us();
 	int rc = (*org_pthread_rwlock_timedwrlock_h)(rwlock, abstime);
@@ -623,6 +656,12 @@ void exit(int status)
 		}
 
 		emit_key_value(fh, "exe_name", exe_name);
+
+		emit_key_value(fh, "cnt_mutex_trylock", cnt_mutex_trylock);
+		emit_key_value(fh, "cnt_rwlock_try_rdlock", cnt_rwlock_try_rdlock);
+		emit_key_value(fh, "cnt_rwlock_try_timedrdlock", cnt_rwlock_try_timedrdlock);
+		emit_key_value(fh, "cnt_rwlock_try_wrlock", cnt_rwlock_try_wrlock);
+		emit_key_value(fh, "cnt_rwlock_try_timedwrlock", cnt_rwlock_try_timedwrlock);
 
 		char caller_str[512];
 

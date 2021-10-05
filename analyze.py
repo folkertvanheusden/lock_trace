@@ -190,6 +190,11 @@ def emit_header():
     print('<tr><td>started at:</td><td>%d (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))), file=fh_out)
     print('<tr><td>stopped at:</td><td>%d (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))), file=fh_out)
     print('<tr><td>took:</td><td>%fs</td></tr>' % took, file=fh_out)
+    print('<tr><td># mutex try-locks</td><td>%d</td></tr>' % cnt_mutex_trylock, file=fh_out)
+    print('<tr><td># rwlock try-rdlock</td><td>%d</td></tr>' % cnt_rwlock_try_rdlock, file=fh_out)
+    print('<tr><td># rwlock try-timed-rdlock</td><td>%d</td></tr>' % cnt_rwlock_try_timedrdlock, file=fh_out)
+    print('<tr><td># rwlock try-wrlock</td><td>%d</td></tr>' % cnt_rwlock_try_wrlock, file=fh_out)
+    print('<tr><td># rwlock try-timed-rwlock</td><td>%d</td></tr>' % cnt_rwlock_try_timedwrlock, file=fh_out)
     print('</table>', file=fh_out)
 
     print('<a name="double"></a><h2>DOUBLE LOCKS/UNLOCKS</h2>', file=fh_out)
@@ -258,6 +263,21 @@ while True:
 
     elif j['type'] == 'meta' and 'n_procs' in j:
         n_procs = j['n_procs']
+
+    elif j['type'] == 'meta' and 'cnt_mutex_trylock' in j:
+        cnt_mutex_trylock = j['cnt_mutex_trylock']
+
+    elif j['type'] == 'meta' and 'cnt_rwlock_try_rdlock' in j:
+        cnt_rwlock_try_rdlock = j['cnt_rwlock_try_rdlock']
+
+    elif j['type'] == 'meta' and 'cnt_rwlock_try_timedrdlock' in j:
+        cnt_rwlock_try_timedrdlock = j['cnt_rwlock_try_timedrdlock']
+
+    elif j['type'] == 'meta' and 'cnt_rwlock_try_wrlock' in j:
+        cnt_rwlock_try_wrlock = j['cnt_rwlock_try_wrlock']
+
+    elif j['type'] == 'meta' and 'cnt_rwlock_try_timedwrlock' in j:
+        cnt_rwlock_try_timedwrlock = j['cnt_rwlock_try_timedwrlock']
 
     elif j['type'] == 'meta' and 'pid' in j:
         pid = j['pid']
