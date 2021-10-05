@@ -135,11 +135,30 @@ void test_rwlock()
 	pthread_rwlock_unlock(&rwlock);
 }
 
+void test_try_lock()
+{
+	pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
+
+	pthread_setname_np(pthread_self(), "test-try-lock");
+
+	pthread_rwlock_rdlock(&rwlock);
+
+	pthread_rwlock_tryrdlock(&rwlock);
+	pthread_rwlock_trywrlock(&rwlock);
+
+	struct timespec ts = { 0, 0 };
+
+	pthread_rwlock_timedrdlock(&rwlock, &ts);
+	pthread_rwlock_timedwrlock(&rwlock, &ts);
+}
+
 int main(int argc, char *argv[])
 {
 	test_mutex();
 
 	test_rwlock();
+
+	test_try_lock();
 
 	pthread_setname_np(pthread_self(), "main");
 
