@@ -147,11 +147,17 @@ org_pthread_rwlock_rdlock org_pthread_rwlock_rdlock_h = nullptr;
 typedef int (* org_pthread_rwlock_tryrdlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_tryrdlock org_pthread_rwlock_tryrdlock_h = nullptr;
 
+typedef int (* org_pthread_rwlock_timedrdlock)(pthread_rwlock_t *rwlock, const struct timespec *abstime);
+org_pthread_rwlock_timedrdlock org_pthread_rwlock_timedrdlock_h = nullptr;
+
 typedef int (* org_pthread_rwlock_wrlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_wrlock org_pthread_rwlock_wrlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_trywrlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_trywrlock org_pthread_rwlock_trywrlock_h = nullptr;
+
+typedef int (* org_pthread_rwlock_timedwrlock)(pthread_rwlock_t *rwlock, const struct timespec *abstime);
+org_pthread_rwlock_timedwrlock org_pthread_rwlock_timedwrlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_unlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_unlock org_pthread_rwlock_unlock_h = nullptr;
@@ -372,12 +378,12 @@ void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took
 		}
 #endif
 
-			items[cur_idx].rwlock_innards.__readers = rwlock->__data.__readers;
-			items[cur_idx].rwlock_innards.__writers = rwlock->__data.__writers;
+		items[cur_idx].rwlock_innards.__readers = rwlock->__data.__readers;
+		items[cur_idx].rwlock_innards.__writers = rwlock->__data.__writers;
 #if __x86_64__
-			items[cur_idx].rwlock_innards.__cur_writer  = rwlock->__data.__cur_writer;
+		items[cur_idx].rwlock_innards.__cur_writer  = rwlock->__data.__cur_writer;
 #else
-			items[cur_idx].rwlock_innards.__cur_writer  = 0;
+		items[cur_idx].rwlock_innards.__cur_writer  = 0;
 #endif
 
 		items[cur_idx].lock_took = took;
@@ -421,6 +427,25 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
+int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *abstime)
+{
+	if (unlikely(!org_pthread_rwlock_timedrdlock_h))
+		org_pthread_rwlock_timedrdlock_h = (org_pthread_rwlock_timedrdlock)dlsym(RTLD_NEXT, "pthread_rwlock_timedrdlock");
+
+	uint64_t start_ts = get_us();
+	int rc = (*org_pthread_rwlock_timedrdlock_h)(rwlock, abstime);
+	uint64_t end_ts = get_us();
+
+	// TODO seperate a_r_lock for timed locks as they may take quite
+	// a bit longer
+	if (likely(rc == 0))
+		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
+	else if (rc == EDEADLK)
+		store_rwlock_info(rwlock, a_deadlock, 0);
+
+	return rc;
+}
+
 int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 {
 	if (unlikely(!org_pthread_rwlock_wrlock_h))
@@ -438,13 +463,13 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
-int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
+int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *abstime)
 {
-	if (unlikely(!org_pthread_rwlock_trywrlock_h))
-		org_pthread_rwlock_trywrlock_h = (org_pthread_rwlock_trywrlock)dlsym(RTLD_NEXT, "pthread_rwlock_trywrlock");
+	if (unlikely(!org_pthread_rwlock_timedwrlock_h))
+		org_pthread_rwlock_timedwrlock_h = (org_pthread_rwlock_timedwrlock)dlsym(RTLD_NEXT, "pthread_rwlock_timedwrlock");
 
 	uint64_t start_ts = get_us();
-	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
+	int rc = (*org_pthread_rwlock_timedwrlock_h)(rwlock, abstime);
 	uint64_t end_ts = get_us();
 
 	if (likely(rc == 0))
@@ -518,10 +543,6 @@ void __attribute__ ((constructor)) start_lock_tracing()
 		color("\033[0m");
 		_exit(1);
 	}
-
-	// FIXME intercept:
-	//	int pthread_rwlock_timedrdlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
-	//	int pthread_rwlock_timedwrlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
 
 	color("\033[0m");
 }
