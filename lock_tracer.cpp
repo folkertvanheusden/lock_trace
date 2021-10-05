@@ -88,7 +88,7 @@ uint64_t get_us()
         return tp.tv_sec * 1000l * 1000l + tp.tv_nsec / 1000;
 }
 
-uint64_t start_ts = get_us();
+uint64_t global_start_ts = get_us();
 
 typedef enum { a_lock, a_unlock, a_thread_clean, a_deadlock, a_r_lock, a_w_lock, a_rw_unlock } lock_action_t;
 
@@ -121,7 +121,7 @@ typedef struct {
 	uint64_t lock_took;
 } lock_trace_item_t;
 
-std::atomic_uint64_t idx { 0 };
+std::atomic_uint64_t items_idx { 0 };
 lock_trace_item_t *items = nullptr;
 
 // assuming atomic 8-byte pointer updates
@@ -205,7 +205,7 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
 		return;
 	}
 
-	uint64_t cur_idx = idx++;
+	uint64_t cur_idx = items_idx++;
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
@@ -262,7 +262,7 @@ void pthread_exit(void *retval)
 	prevent_backtrace = true;
 
 	if (likely(items != nullptr)) {
-		uint64_t cur_idx = idx++;
+		uint64_t cur_idx = items_idx++;
 
 		if (likely(cur_idx < n_records)) {
 			items[cur_idx].lock = nullptr;
@@ -350,7 +350,7 @@ void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took
 		return;
 	}
 
-	uint64_t cur_idx = idx++;
+	uint64_t cur_idx = items_idx++;
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
@@ -605,7 +605,7 @@ void exit(int status)
 
 		emit_key_value(fh, "hostname", hostname);
 
-		emit_key_value(fh, "start_ts", start_ts);
+		emit_key_value(fh, "start_ts", global_start_ts);
 
 		emit_key_value(fh, "end_ts", end_ts);
 
@@ -631,8 +631,8 @@ void exit(int status)
 		char caller_str[512];
 
 		// Copy, in case a thread is still running and adding new records: a for-loop
-		// on 'idx' might run longer than intended and even emit garbage.
-		uint64_t n_rec_inserted = idx;
+		// on 'items_idx' might run longer than intended and even emit garbage.
+		uint64_t n_rec_inserted = items_idx;
 
 		if (n_rec_inserted > n_records)
 			n_rec_inserted = n_records;
@@ -731,7 +731,7 @@ void exit(int status)
 	// make sure no entries are added by threads that are
 	// still running; next statement unallocates the mmap()ed
 	// memory
-	idx = n_records;
+	items_idx = n_records;
 
 	munmap(items, length);
 
