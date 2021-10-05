@@ -144,8 +144,14 @@ org_fork org_fork_h = nullptr;
 typedef int (* org_pthread_rwlock_rdlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_rdlock org_pthread_rwlock_rdlock_h = nullptr;
 
+typedef int (* org_pthread_rwlock_tryrdlock)(pthread_rwlock_t *rwlock);
+org_pthread_rwlock_tryrdlock org_pthread_rwlock_tryrdlock_h = nullptr;
+
 typedef int (* org_pthread_rwlock_wrlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_wrlock org_pthread_rwlock_wrlock_h = nullptr;
+
+typedef int (* org_pthread_rwlock_trywrlock)(pthread_rwlock_t *rwlock);
+org_pthread_rwlock_trywrlock org_pthread_rwlock_trywrlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_unlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_unlock org_pthread_rwlock_unlock_h = nullptr;
@@ -398,6 +404,23 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
+int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
+{
+	if (unlikely(!org_pthread_rwlock_tryrdlock_h))
+		org_pthread_rwlock_tryrdlock_h = (org_pthread_rwlock_tryrdlock)dlsym(RTLD_NEXT, "pthread_rwlock_tryrdlock");
+
+	uint64_t start_ts = get_us();
+	int rc = (*org_pthread_rwlock_tryrdlock_h)(rwlock);
+	uint64_t end_ts = get_us();
+
+	if (likely(rc == 0))
+		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
+	else if (rc == EDEADLK)
+		store_rwlock_info(rwlock, a_deadlock, 0);
+
+	return rc;
+}
+
 int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 {
 	if (unlikely(!org_pthread_rwlock_wrlock_h))
@@ -405,6 +428,23 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 
 	uint64_t start_ts = get_us();
 	int rc = (*org_pthread_rwlock_wrlock_h)(rwlock);
+	uint64_t end_ts = get_us();
+
+	if (likely(rc == 0))
+		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
+	else if (rc == EDEADLK)
+		store_rwlock_info(rwlock, a_deadlock, 0);
+
+	return rc;
+}
+
+int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
+{
+	if (unlikely(!org_pthread_rwlock_trywrlock_h))
+		org_pthread_rwlock_trywrlock_h = (org_pthread_rwlock_trywrlock)dlsym(RTLD_NEXT, "pthread_rwlock_trywrlock");
+
+	uint64_t start_ts = get_us();
+	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
 	uint64_t end_ts = get_us();
 
 	if (likely(rc == 0))
@@ -480,8 +520,6 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	}
 
 	// FIXME intercept:
-	//	int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock);
-	//	int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_timedrdlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
 	//	int pthread_rwlock_timedwrlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
 
