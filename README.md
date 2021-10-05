@@ -11,8 +11,8 @@ rwlocks are not yet supported.
 requirements
 ------------
 analyze.py needs the '/usr/bin/eu-addr2line' program from the
-'elfutils' package. Also lock_tracer.cpp requires
-'libjansson-dev' to build.
+'elfutils' package. Also lock_tracer.cpp requires 'libc6-dev'
+and 'libjansson-dev' packages to build.
 
 
 building

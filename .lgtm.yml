@@ -3,6 +3,7 @@ extraction:
     prepare:
       packages:
         - libjansson-dev
+        - libc6-dev
     configure:
       command:
         - mkdir _lgtm_build_dir
