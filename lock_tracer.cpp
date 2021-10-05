@@ -48,14 +48,18 @@
 
 #define STORE_THREAD_NAME
 
+#define WITH_COLORS
+
+#define USE_CLOCK CLOCK_MONOTONIC
+
 /////////////////////////////////////
 
 #ifndef __linux__
 #warning This program may only work correctly on Linux.
 #endif
 
-#define likely(x)       __builtin_expect((x),1)
-#define unlikely(x)     __builtin_expect((x),0)
+#define likely(x)       __builtin_expect((x), 1)
+#define unlikely(x)     __builtin_expect((x), 0)
 
 uint64_t n_records = 16777216;
 size_t length = 0;
@@ -64,15 +68,17 @@ bool fork_warning = false;
 
 void color(const char *str)
 {
+#ifdef WITH_COLORS
 	if (isatty(fileno(stderr)))
 		fprintf(stderr, "%s", str);
+#endif
 }
 
 uint64_t get_us()
 {
 	struct timespec tp { 0 };
 
-	if (clock_gettime(CLOCK_MONOTONIC, &tp) == -1) {
+	if (clock_gettime(USE_CLOCK, &tp) == -1) {
 		perror("clock_gettime");
 		return 0;
 	}
@@ -266,6 +272,13 @@ void pthread_exit(void *retval)
 		tid_names->erase(_gettid());
 
 	(*org_pthread_exit_h)(retval);
+
+	color("\033[0;31m");
+	fprintf(stderr, "pthread_exit did not stop thread!\n");
+	color("\033[0m");
+
+	for(;;)
+		sleep(86400);
 }
 #endif
 
@@ -395,7 +408,7 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	uint64_t end_ts = get_us();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, 0);
+		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
 	else if (rc == EDEADLK)
 		store_rwlock_info(rwlock, a_deadlock, 0);
 
@@ -513,7 +526,10 @@ void exit(int status)
 	}
 	else {
 		char *file_name = nullptr;
-		asprintf(&file_name, "dump.dat.%d", getpid());
+		if (asprintf(&file_name, "dump.dat.%d", getpid()) == -1) {
+			fprintf(stderr, "asprintf failed: using \"dump.dat\" as filename\n");
+			file_name = strdup("dump.dat");
+		}
 
 		fprintf(stderr, "Trace file (load with '-t' in analyze.py): %s\n", file_name);
 
@@ -546,7 +562,11 @@ void exit(int status)
 		emit_key_value(fh, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
 
 		char exe_name[PATH_MAX] = { 0 };
-		readlink("/proc/self/exe", exe_name, sizeof(exe_name) - 1);
+		if (readlink("/proc/self/exe", exe_name, sizeof(exe_name) - 1) == -1) {
+			color("\033[0;31m");
+			fprintf(stderr, "readlink(/proc/self/exe) failed: %s\n", strerror(errno));
+			color("\033[0m");
+		}
 
 		emit_key_value(fh, "exe_name", exe_name);
 
