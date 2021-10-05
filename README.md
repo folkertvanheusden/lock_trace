@@ -111,7 +111,8 @@ similar software
 
 code analysis of this program
 -----------------------------
-[![Total alerts](https://img.shields.io/lgtm/alerts/g/folkertvanheusden/lock_trace.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/folkertvanheusden/lock_trace/alerts/)
+[![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/folkertvanheusden/lock_trace.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/folkertvanheusden/lock_trace/context:python)
+[![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/folkertvanheusden/lock_trace.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/folkertvanheusden/lock_trace/context:cpp)
 
 
 (C) 2021 by folkert@vanheusden.com
