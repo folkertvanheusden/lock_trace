@@ -20,8 +20,10 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef WITH_STR_MUT_H
 #include <bits/pthreadtypes.h>
 #include <bits/struct_mutex.h>
+#endif
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
