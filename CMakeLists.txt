@@ -22,7 +22,7 @@ add_executable(test
 	test.c
 	)
 
-file(GLOB header_file /usr/include/*/bits/struct_mutex.hFIXME)
+file(GLOB header_file /usr/include/*/bits/struct_mutex.h)
 IF (header_file)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_STR_MUT_H")
 ENDIF()
