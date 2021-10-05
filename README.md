@@ -110,6 +110,6 @@ similar software
 
 
 (C) 2021 by folkert@vanheusden.com
-Released under GPL v3.0.
+Released under Apache license v2.0.
 
 If you like to thank me, please be kind to other living things instead.
