@@ -109,5 +109,10 @@ similar software
 * valgrind, https://valgrind.org/
 
 
+code analysis of this program
+-----------------------------
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/folkertvanheusden/lock_trace.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/folkertvanheusden/lock_trace/alerts/)
+
+
 (C) 2021 by folkert@vanheusden.com
 Released under Apache license v2.0.
