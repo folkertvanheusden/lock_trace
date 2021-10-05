@@ -480,10 +480,7 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	}
 
 	// FIXME intercept:
-	//	int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock);
-	//	int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
-	//	int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock);
 	//	int pthread_rwlock_timedrdlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
 	//	int pthread_rwlock_timedwrlock(pthread_rwlock_t *restrict rwlock, const struct timespec *restrict abstime);
