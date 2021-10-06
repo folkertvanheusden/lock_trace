@@ -244,17 +244,16 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 #ifdef WITH_TIMESTAMP
 		items[cur_idx].timestamp = get_us();
 #endif
+
 #ifdef STORE_THREAD_NAME
-		if (likely(tid_names != nullptr)) {
-			check_tid_names_lock_functions();
+		check_tid_names_lock_functions();
 
-			if ((*org_pthread_rwlock_rdlock_h)(&tid_names_lock) == 0) {
-				auto it = tid_names->find(items[cur_idx].tid);
-				if (it != tid_names->end())
-					memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+		if ((*org_pthread_rwlock_rdlock_h)(&tid_names_lock) == 0) {
+			auto it = tid_names->find(items[cur_idx].tid);
+			if (it != tid_names->end())
+				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
 
-				(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
-			}
+			(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
 		}
 #endif
 
@@ -305,15 +304,15 @@ void pthread_exit(void *retval)
 		org_pthread_exit_h = (org_pthread_exit)dlsym(RTLD_NEXT, "pthread_exit");
 #endif
 
-	if (likely(tid_names != nullptr)) {
-		check_tid_names_lock_functions();
+#ifdef STORE_THREAD_NAME
+	check_tid_names_lock_functions();
 
-		if ((*org_pthread_rwlock_wrlock_h)(&tid_names_lock) == 0) {
-			tid_names->erase(_gettid());
+	if ((*org_pthread_rwlock_wrlock_h)(&tid_names_lock) == 0) {
+		tid_names->erase(_gettid());
 
-			(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
-		}
+		(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
 	}
+#endif
 
 	(*org_pthread_exit_h)(retval);
 
@@ -405,16 +404,14 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 		items[cur_idx].timestamp = get_us();
 #endif
 #ifdef STORE_THREAD_NAME
-		if (likely(tid_names != nullptr)) {
-			check_tid_names_lock_functions();
+		check_tid_names_lock_functions();
 
-			if ((*org_pthread_rwlock_rdlock_h)(&tid_names_lock) == 0) {
-				auto it = tid_names->find(items[cur_idx].tid);
-				if (it != tid_names->end())
-					memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+		if ((*org_pthread_rwlock_rdlock_h)(&tid_names_lock) == 0) {
+			auto it = tid_names->find(items[cur_idx].tid);
+			if (it != tid_names->end())
+				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
 
-				(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
-			}
+			(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
 		}
 #endif
 
@@ -562,7 +559,8 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 
 int pthread_setname_np(pthread_t thread, const char *name)
 {
-	if (tid_names && name) {
+#ifdef STORE_THREAD_NAME
+	if (likely(name)) {
 		check_tid_names_lock_functions();
 
 		if ((*org_pthread_rwlock_wrlock_h)(&tid_names_lock) == 0) {
@@ -571,6 +569,7 @@ int pthread_setname_np(pthread_t thread, const char *name)
 			(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
 		}
 	}
+#endif
 
 	if (unlikely(!org_pthread_setname_np_h))
 		org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
