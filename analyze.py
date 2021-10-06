@@ -22,6 +22,8 @@ exe_name = '?'
 
 fh_out = sys.stdout
 
+billion = 1000000000
+
 try:
     opts, args = getopt.getopt(sys.argv[1:], "c:t:r:bf:", ["core=", "trace=", "resolver=", "human-backtrace", "file="])
 except getopt.GetoptError as err:
@@ -152,9 +154,9 @@ end_ts = None
 PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_ERRORCHECK = None
 
 def my_ctime(ts):
-    dt = time.localtime(ts // 1000000)
+    dt = time.localtime(ts // billion)
 
-    return '%04d-%02d-%02d %02d:%02d:%02d.%06d' % (dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, ts % 1000000)
+    return '%04d-%02d-%02d %02d:%02d:%02d.%06d' % (dt.tm_year, dt.tm_mon, dt.tm_mday, dt.tm_hour, dt.tm_min, dt.tm_sec, ts % billion)
 
 def emit_header():
     global start_ts
@@ -182,13 +184,13 @@ def emit_header():
     print('<tr><td>host name:</td><td>%s</td></tr>' % hostname, file=fh_out)
     print('<tr><td>core file:</td><td>%s</td></tr>' % core_file, file=fh_out)
     print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file, file=fh_out)
-    took = (end_ts - start_ts) / 1000000
+    took = (end_ts - start_ts) / billion
     n_per_sec = n_records / took
     print('<tr><td># trace records:</td><td>%s (%.2f%%, %.2f%%/s)</td></tr>' % (n_records, n_records * 100.0 / n_records_max, n_per_sec * 100.0 / n_records_max), file=fh_out)
     print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning, file=fh_out)
     print('<tr><td># cores:</td><td>%s</td></tr>' % n_procs, file=fh_out)
-    print('<tr><td>started at:</td><td>%d (%s)</td></tr>' % (start_ts, my_ctime(int(start_ts))), file=fh_out)
-    print('<tr><td>stopped at:</td><td>%d (%s)</td></tr>' % (end_ts, my_ctime(int(end_ts))), file=fh_out)
+    print('<tr><td>started at:</td><td>%.9f (%s)</td></tr>' % (start_ts / billion, my_ctime(int(start_ts))), file=fh_out)
+    print('<tr><td>stopped at:</td><td>%.9f (%s)</td></tr>' % (end_ts / billion, my_ctime(int(end_ts))), file=fh_out)
     print('<tr><td>took:</td><td>%fs</td></tr>' % took, file=fh_out)
     print('<tr><td># mutex try-locks</td><td>%d</td></tr>' % cnt_mutex_trylock, file=fh_out)
     print('<tr><td># rwlock try-rdlock</td><td>%d</td></tr>' % cnt_rwlock_try_rdlock, file=fh_out)
@@ -541,9 +543,9 @@ def pp_record(j, end_ts, with_li):
     if not end_ts:
         end_ts = since_ts - 1
 
-    duration = (end_ts - since_ts) / 1000000.0
+    duration = (end_ts - since_ts) / billion
 
-    rc = 'index: %s, mutex: %016x, tid: %s, name: %s, since: %s (%s), locked for %.6fs, count: %s, owner: %s, kind: %s' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['timestamp'], since, duration, j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind']))
+    rc = 'index: %s, mutex: %016x, tid: %s, name: %s, since: %s (%s), locked for %.9fs, count: %s, owner: %s, kind: %s' % (j['t'], j['lock'], j['tid'], j['thread_name'], j['timestamp'], since, duration, j['mutex_count'], j['mutex_owner'], mutex_kind_to_str(j['mutex_kind']))
 
     if with_li:
         return '<li>%s</li>' % rc
@@ -655,15 +657,15 @@ def emit_durations(fh_out, durations, l_durations, contended):
 
         if d in l_durations and l_durations[d]['n']:
             lock_took = l_durations[d]['sum_took'] / l_durations[d]['n']
-            print('<tr><td>average time to take lock:</td><td>%.1fus</td></tr>' % lock_took, file=fh_out)
+            print('<tr><td>average time to take lock:</td><td>%.2fns</td></tr>' % lock_took, file=fh_out)
 
-        print('<tr><td>total time:</td><td>%.1fus</td></tr>' % sum(durations[d]['median']), file=fh_out)
-        print('<tr><td>average:</td><td>%.6fus</td></tr>' % avg, file=fh_out)
-        print('<tr><td>standard deviation:</td><td>%.6fus</td></tr>' % sd, file=fh_out)
+        print('<tr><td>total time:</td><td>%.2fns</td></tr>' % sum(durations[d]['median']), file=fh_out)
+        print('<tr><td>average:</td><td>%.2fns</td></tr>' % avg, file=fh_out)
+        print('<tr><td>standard deviation:</td><td>%.2fns</td></tr>' % sd, file=fh_out)
         sorted_list = sorted(durations[d]['median'])
-        print('<tr><td>mininum:</td><td>%.2fus</td></tr>' % sorted_list[0], file=fh_out)
-        print('<tr><td>median:</td><td>%.2fus</td></tr>' % sorted_list[len(sorted_list) // 2], file=fh_out)
-        print('<tr><td>maximum:</td><td>%.2fus</td></tr>' % sorted_list[-1], file=fh_out)
+        print('<tr><td>mininum:</td><td>%.2fns</td></tr>' % sorted_list[0], file=fh_out)
+        print('<tr><td>median:</td><td>%.2fns</td></tr>' % sorted_list[len(sorted_list) // 2], file=fh_out)
+        print('<tr><td>maximum:</td><td>%.2fns</td></tr>' % sorted_list[-1], file=fh_out)
         print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d]['first_unlock']['epoch'])), durations[d]['first_unlock']['idx']), file=fh_out)
         print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d]['last_unlock']['epoch'])), durations[d]['last_unlock']['idx']), file=fh_out)
         print('</table>', file=fh_out)

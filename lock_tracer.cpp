@@ -48,7 +48,7 @@
 
 #define WITH_COLORS
 
-#define USE_CLOCK CLOCK_MONOTONIC
+#define USE_CLOCK CLOCK_REALTIME
 
 /////////////////////////////////////
 
@@ -72,7 +72,7 @@ void color(const char *str)
 #endif
 }
 
-uint64_t get_us()
+uint64_t get_ns()
 {
 	struct timespec tp { 0 };
 
@@ -81,10 +81,10 @@ uint64_t get_us()
 		return 0;
 	}
 
-        return tp.tv_sec * 1000l * 1000l + tp.tv_nsec / 1000;
+        return tp.tv_sec * 1000ll * 1000ll * 1000ll + tp.tv_nsec;
 }
 
-uint64_t global_start_ts = get_us();
+uint64_t global_start_ts = get_ns();
 
 typedef enum { a_lock, a_unlock, a_thread_clean, a_deadlock, a_r_lock, a_w_lock, a_rw_unlock } lock_action_t;
 
@@ -227,7 +227,7 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
 		items[cur_idx].tid = _gettid();
 		items[cur_idx].la = la;
 #ifdef WITH_TIMESTAMP
-		items[cur_idx].timestamp = get_us();
+		items[cur_idx].timestamp = get_ns();
 #endif
 #ifdef STORE_THREAD_NAME
 		if (likely(tid_names != nullptr)) {
@@ -271,7 +271,7 @@ void pthread_exit(void *retval)
 			items[cur_idx].tid = _gettid();
 			items[cur_idx].la = a_thread_clean;
 #ifdef WITH_TIMESTAMP
-			items[cur_idx].timestamp = get_us();
+			items[cur_idx].timestamp = get_ns();
 #endif
 		}
 		else {
@@ -303,9 +303,9 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	if (unlikely(!org_pthread_mutex_lock_h))
 		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 
-	uint64_t start_ts = get_us();
+	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_mutex_lock_h)(mutex);
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
 		store_mutex_info(mutex, a_lock, end_ts - start_ts);
@@ -374,7 +374,7 @@ void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took
 		items[cur_idx].tid = _gettid();
 		items[cur_idx].la = la;
 #ifdef WITH_TIMESTAMP
-		items[cur_idx].timestamp = get_us();
+		items[cur_idx].timestamp = get_ns();
 #endif
 #ifdef STORE_THREAD_NAME
 		if (likely(tid_names != nullptr)) {
@@ -404,9 +404,9 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 	if (unlikely(!org_pthread_rwlock_rdlock_h))
 		org_pthread_rwlock_rdlock_h = (org_pthread_rwlock_rdlock)dlsym(RTLD_NEXT, "pthread_rwlock_rdlock");
 
-	uint64_t start_ts = get_us();
+	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_rdlock_h)(rwlock);
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
 		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
@@ -423,9 +423,9 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 
 	cnt_rwlock_try_rdlock++;
 
-	uint64_t start_ts = get_us();
+	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_tryrdlock_h)(rwlock);
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
 		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
@@ -442,9 +442,9 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 
 	cnt_rwlock_try_timedrdlock++;
 
-	uint64_t start_ts = get_us();
+	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_timedrdlock_h)(rwlock, abstime);
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	// TODO seperate a_r_lock for timed locks as they may take quite
 	// a bit longer
@@ -461,9 +461,9 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	if (unlikely(!org_pthread_rwlock_wrlock_h))
 		org_pthread_rwlock_wrlock_h = (org_pthread_rwlock_wrlock)dlsym(RTLD_NEXT, "pthread_rwlock_wrlock");
 
-	uint64_t start_ts = get_us();
+	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_wrlock_h)(rwlock);
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
 		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
@@ -480,9 +480,9 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
 
 	cnt_rwlock_try_wrlock++;
 
-	uint64_t start_ts = get_us();
+	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
 		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
@@ -499,9 +499,9 @@ int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *
 
 	cnt_rwlock_try_timedwrlock++;
 
-	uint64_t start_ts = get_us();
+	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_timedwrlock_h)(rwlock, abstime);
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
 		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
@@ -602,7 +602,7 @@ void emit_key_value(FILE *fh, const char *key, const uint64_t value)
 
 void exit(int status)
 {
-	uint64_t end_ts = get_us();
+	uint64_t end_ts = get_ns();
 
 	color("\033[0;31m");
 	fprintf(stderr, "Lock tracer terminating... (path: %s)\n", get_current_dir_name());
