@@ -13,6 +13,7 @@
 #include <limits.h>
 #include <map>
 #include <pthread.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -105,6 +106,10 @@ typedef struct {
 			unsigned int __count;
 			int __owner;
 			int __kind;
+#ifdef __x86_64__
+			short __spins;
+			short __elision;
+#endif
 		} mutex_innards;
 
 		struct {
@@ -260,6 +265,10 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 		items[cur_idx].mutex_innards.__count = mutex->__data.__count;
 		items[cur_idx].mutex_innards.__owner = mutex->__data.__owner;
 		items[cur_idx].mutex_innards.__kind  = mutex->__data.__kind;
+#ifdef __x86_64__
+		items[cur_idx].mutex_innards.__spins   = mutex->__data.__spins;
+		items[cur_idx].mutex_innards.__elision = mutex->__data.__elision;
+#endif
 
 		items[cur_idx].lock_took = took;
 	}
@@ -682,11 +691,27 @@ void exit(int status)
 
 		emit_key_value(fh, "n_procs", get_nprocs());
 
-		emit_key_value(fh, "pid", getpid());
+		pid_t pid = getpid();
+		emit_key_value(fh, "pid", pid);
+
+		int s = sched_getscheduler(pid);
+		if (s == SCHED_OTHER)
+			emit_key_value(fh, "scheduler", "sched-other");
+		else if (s == SCHED_BATCH)
+			emit_key_value(fh, "scheduler", "sched-batch");
+		else if (s == SCHED_IDLE)
+			emit_key_value(fh, "scheduler", "sched-idle");
+		else if (s == SCHED_FIFO)
+			emit_key_value(fh, "scheduler", "sched-fifo");
+		else if (s == SCHED_RR)
+			emit_key_value(fh, "scheduler", "sched-rr");
+		else
+			emit_key_value(fh, "scheduler", "unknown");
 
 		emit_key_value(fh, "mutex_type_normal", PTHREAD_MUTEX_NORMAL);
 		emit_key_value(fh, "mutex_type_recursive", PTHREAD_MUTEX_RECURSIVE);
 		emit_key_value(fh, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
+		emit_key_value(fh, "mutex_type_adaptive", PTHREAD_MUTEX_ADAPTIVE_NP);
 
 		char exe_name[PATH_MAX] = { 0 };
 		if (readlink("/proc/self/exe", exe_name, sizeof(exe_name) - 1) == -1) {
@@ -787,6 +812,10 @@ void exit(int status)
 				json_object_set(obj, "mutex_count", json_integer(items[i].mutex_innards.__count));
 				json_object_set(obj, "mutex_owner", json_integer(items[i].mutex_innards.__owner));
 				json_object_set(obj, "mutex_kind",  json_integer(items[i].mutex_innards.__kind));
+#ifdef __x86_64__
+				json_object_set(obj, "mutex_spins",  json_integer(items[i].mutex_innards.__spins));
+				json_object_set(obj, "mutex_elision",  json_integer(items[i].mutex_innards.__elision));
+#endif
 			}
 
 			fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));

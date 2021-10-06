@@ -151,7 +151,7 @@ any_records = False
 start_ts = None
 end_ts = None
 
-PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_ERRORCHECK = None
+PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ADAPTIVE = None
 
 def my_ctime(ts):
     dt = time.localtime(ts // billion)
@@ -181,6 +181,7 @@ def emit_header():
     print('<table><tr><th colspan=2>meta data</th></tr>', file=fh_out)
     print('<tr><td>executable:</td><td>%s</td></tr>' % exe_name, file=fh_out)
     print('<tr><td>PID:</td><td>%d</td></tr>' % pid, file=fh_out)
+    print('<tr><td>scheduler:</td><td>%s</td></tr>' % scheduler, file=fh_out)
     print('<tr><td>host name:</td><td>%s</td></tr>' % hostname, file=fh_out)
     print('<tr><td>core file:</td><td>%s</td></tr>' % core_file, file=fh_out)
     print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file, file=fh_out)
@@ -206,6 +207,7 @@ def mutex_kind_to_str(mk):
     global PTHREAD_MUTEX_NORMAL
     global PTHREAD_MUTEX_RECURSIVE
     global PTHREAD_MUTEX_ERRORCHECK
+    global PTHREAD_MUTEX_ADAPTIVE
 
     if mk == PTHREAD_MUTEX_NORMAL:
         return 'normal'
@@ -215,6 +217,9 @@ def mutex_kind_to_str(mk):
 
     if mk == PTHREAD_MUTEX_ERRORCHECK:
         return 'errorcheck'
+
+    if mk == PTHREAD_MUTEX_ADAPTIVE:
+        return 'adaptive'
 
     return '? %s ?' % mk
 
@@ -247,6 +252,9 @@ while True:
 
     elif j['type'] == 'meta' and 'mutex_type_errorcheck' in j:
         PTHREAD_MUTEX_ERRORCHECK = j['mutex_type_errorcheck']
+
+    elif j['type'] == 'meta' and 'mutex_type_adaptive' in j:
+        PTHREAD_MUTEX_ADAPTIVE = j['mutex_type_adaptive']
 
     elif j['type'] == 'meta' and 'start_ts' in j:
         start_ts = j['start_ts']
@@ -283,6 +291,9 @@ while True:
 
     elif j['type'] == 'meta' and 'pid' in j:
         pid = j['pid']
+
+    elif j['type'] == 'meta' and 'scheduler' in j:
+        scheduler = j['scheduler']
 
     elif j['type'] == 'data' and j['action'] == 'lock':
         resolve_addresses(core_file, j['caller'])

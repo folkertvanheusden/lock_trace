@@ -55,7 +55,7 @@ void *thread(void *p)
 
 void test_mutex()
 {
-	pthread_mutex_t mutex, mutex2;
+	pthread_mutex_t mutex, mutex2, mutex3 = PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP;
 	pthread_mutexattr_t attr, attr2;
 
 	pthread_setname_np(pthread_self(), "test-mutex");
@@ -106,6 +106,13 @@ void test_mutex()
 
 	pthread_mutex_lock(&mutex2); /* test deadlock */
 	pthread_mutex_lock(&mutex2);
+
+	uint64_t dummy = 0;
+	for(int i=0; i<1024; i++) { /* test adaptive lock */
+		pthread_mutex_lock(&mutex3);
+		dummy += i;
+		pthread_mutex_unlock(&mutex3);
+	}
 }
 
 void test_rwlock()
