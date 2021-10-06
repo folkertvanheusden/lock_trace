@@ -560,7 +560,7 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 int pthread_setname_np(pthread_t thread, const char *name)
 {
 #ifdef STORE_THREAD_NAME
-	if (likely(name)) {
+	if (likely(name != nullptr)) {
 		check_tid_names_lock_functions();
 
 		if ((*org_pthread_rwlock_wrlock_h)(&tid_names_lock) == 0) {
