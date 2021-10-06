@@ -1,5 +1,5 @@
 // (C) 2021 by folkert@vanheusden.com
-// released under GPL v3.0
+// released under Apache license v2.0
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
