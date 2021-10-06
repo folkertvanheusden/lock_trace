@@ -64,7 +64,7 @@ size_t length = 0;
 
 bool fork_warning = false;
 
-void color(const char *str)
+static void color(const char *str)
 {
 #ifdef WITH_COLORS
 	if (isatty(fileno(stderr)))
@@ -72,7 +72,7 @@ void color(const char *str)
 #endif
 }
 
-uint64_t get_us()
+static uint64_t get_us()
 {
 	struct timespec tp { 0 };
 
@@ -167,15 +167,30 @@ typedef int (* org_pthread_rwlock_unlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_unlock org_pthread_rwlock_unlock_h = nullptr;
 
 std::map<int, std::string> *tid_names = nullptr;
+pthread_rwlock_t tid_names_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-int _gettid()
+static int _gettid()
 {
 	return syscall(__NR_gettid);
 }
 
 thread_local bool prevent_backtrace = false;
 
-void show_items_buffer_not_allocated_error()
+// check that function pointers that are required for 'tid_names'-
+// map handling are resolved
+static void check_tid_names_lock_functions()
+{
+	if (unlikely(!org_pthread_rwlock_rdlock_h))
+		org_pthread_rwlock_rdlock_h = (org_pthread_rwlock_rdlock)dlsym(RTLD_NEXT, "pthread_rwlock_rdlock");
+
+	if (unlikely(!org_pthread_rwlock_wrlock_h))
+		org_pthread_rwlock_wrlock_h = (org_pthread_rwlock_wrlock)dlsym(RTLD_NEXT, "pthread_rwlock_wrlock");
+
+	if (unlikely(!org_pthread_rwlock_unlock_h))
+		org_pthread_rwlock_unlock_h = (org_pthread_rwlock_unlock)dlsym(RTLD_NEXT, "pthread_rwlock_unlock");
+}
+
+static void show_items_buffer_not_allocated_error()
 {
 	static bool error_shown = false;
 
@@ -187,7 +202,7 @@ void show_items_buffer_not_allocated_error()
 	}
 }
 
-void show_items_buffer_full_error()
+static void show_items_buffer_full_error()
 {
 	static bool error_shown = false;
 
@@ -198,7 +213,7 @@ void show_items_buffer_full_error()
 	}
 }
 
-void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
+static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
 {
 	if (unlikely(!items)) {
 		// when a constructor of some other library already invokes e.g. pthread_mutex_lock
@@ -231,9 +246,15 @@ void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
 #endif
 #ifdef STORE_THREAD_NAME
 		if (likely(tid_names != nullptr)) {
-			auto it = tid_names->find(items[cur_idx].tid);
-			if (it != tid_names->end())
-				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+			check_tid_names_lock_functions();
+
+			if ((*org_pthread_rwlock_rdlock_h)(&tid_names_lock) == 0) {
+				auto it = tid_names->find(items[cur_idx].tid);
+				if (it != tid_names->end())
+					memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+
+				(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
+			}
 		}
 #endif
 
@@ -284,8 +305,15 @@ void pthread_exit(void *retval)
 		org_pthread_exit_h = (org_pthread_exit)dlsym(RTLD_NEXT, "pthread_exit");
 #endif
 
-	if (likely(tid_names != nullptr))
-		tid_names->erase(_gettid());
+	if (likely(tid_names != nullptr)) {
+		check_tid_names_lock_functions();
+
+		if ((*org_pthread_rwlock_wrlock_h)(&tid_names_lock) == 0) {
+			tid_names->erase(_gettid());
+
+			(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
+		}
+	}
 
 	(*org_pthread_exit_h)(retval);
 
@@ -347,7 +375,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 	return rc;
 }
 
-void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took)
+static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took)
 {
 	if (unlikely(!items)) {
 		show_items_buffer_not_allocated_error();
@@ -378,9 +406,15 @@ void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took
 #endif
 #ifdef STORE_THREAD_NAME
 		if (likely(tid_names != nullptr)) {
-			auto it = tid_names->find(items[cur_idx].tid);
-			if (it != tid_names->end())
-				memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+			check_tid_names_lock_functions();
+
+			if ((*org_pthread_rwlock_rdlock_h)(&tid_names_lock) == 0) {
+				auto it = tid_names->find(items[cur_idx].tid);
+				if (it != tid_names->end())
+					memcpy(items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+
+				(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
+			}
 		}
 #endif
 
@@ -528,8 +562,15 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 
 int pthread_setname_np(pthread_t thread, const char *name)
 {
-	if (tid_names && name)
-		tid_names->emplace(_gettid(), name);
+	if (tid_names && name) {
+		check_tid_names_lock_functions();
+
+		if ((*org_pthread_rwlock_wrlock_h)(&tid_names_lock) == 0) {
+			tid_names->emplace(_gettid(), name);
+
+			(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
+		}
+	}
 
 	if (unlikely(!org_pthread_setname_np_h))
 		org_pthread_setname_np_h = (org_pthread_setname_np)dlsym(RTLD_NEXT, "pthread_setname_np");
@@ -578,7 +619,7 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	color("\033[0m");
 }
 
-void emit_key_value(FILE *fh, const char *key, const char *value)
+static void emit_key_value(FILE *fh, const char *key, const char *value)
 {
 	json_t *obj = json_object();
 	json_object_set(obj, "type", json_string("meta"));
@@ -589,7 +630,7 @@ void emit_key_value(FILE *fh, const char *key, const char *value)
 	json_decref(obj);
 }
 
-void emit_key_value(FILE *fh, const char *key, const uint64_t value)
+static void emit_key_value(FILE *fh, const char *key, const uint64_t value)
 {
 	json_t *obj = json_object();
 	json_object_set(obj, "type", json_string("meta"));
