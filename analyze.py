@@ -157,6 +157,7 @@ start_ts = None
 end_ts = None
 
 PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ADAPTIVE = None
+mutex_type_counts = dict()
 
 def my_ctime(ts):
     dt = time.localtime(ts // billion)
@@ -327,6 +328,9 @@ while True:
             lock_stack_depth_too_large = True
 
         last_used_by[lock_hex] = resolve_addresses(core_file, j['caller'])
+
+        if j['mutex_kind'] in mutex_type_counts:
+            mutex_type_counts[j['mutex_kind']] += 1
 
         # cannot use 'durations' in case unlocks are performed more often than locks
         if not j['lock'] in l_durations:
@@ -592,6 +596,11 @@ while True:
     elif j['type'] == 'marker':
         emit_header()
 
+        mutex_type_counts[PTHREAD_MUTEX_NORMAL] = 0
+        mutex_type_counts[PTHREAD_MUTEX_RECURSIVE] = 0
+        mutex_type_counts[PTHREAD_MUTEX_ERRORCHECK] = 0
+        mutex_type_counts[PTHREAD_MUTEX_ADAPTIVE] = 0
+
     elif j['type'] == 'data' and j['action'] == 'tclean':  # forget a thread
         purge = []
 
@@ -812,6 +821,14 @@ for k in sorted_stacks:
 
     print('<tr><td>%d</td><td>%s</td></tr>' % (sorted_stacks[k], out), file=fh_out)
 
+print('</table>', file=fh_out)
+
+print('<h3>MUTEX TYPE COUNTS</h3>', file=fh_out)
+print('<table><tr><th>type</th><th>count</th></tr>', file=fh_out)
+print('<tr><td>PTHREAD_MUTEX_NORMAL</td><td>%d</td></tr>' % mutex_type_counts[PTHREAD_MUTEX_NORMAL], file=fh_out)
+print('<tr><td>PTHREAD_MUTEX_RECURSIVE</td><td>%d</td></tr>' % mutex_type_counts[PTHREAD_MUTEX_RECURSIVE], file=fh_out)
+print('<tr><td>PTHREAD_MUTEX_ERRORCHECK</td><td>%d</td></tr>' % mutex_type_counts[PTHREAD_MUTEX_ERRORCHECK], file=fh_out)
+print('<tr><td>PTHREAD_MUTEX_ADAPTIVE</td><td>%d</td></tr>' % mutex_type_counts[PTHREAD_MUTEX_ADAPTIVE], file=fh_out)
 print('</table>', file=fh_out)
 
 print('<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></ht,l>', file=fh_out)
