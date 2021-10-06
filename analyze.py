@@ -139,6 +139,8 @@ deadlocks = []
 locked = dict()
 contended = dict()
 
+last_used_by = dict()
+
 # r/w locks
 rw_state = dict()
 rw_durations = dict()  # how long a lock was held
@@ -315,12 +317,16 @@ while True:
     elif j['type'] == 'data' and j['action'] == 'lock':
         resolve_addresses(core_file, j['caller'])
 
+        lock_hex = '%x' % j['lock']
+
         if len(current_lock_stack) < max_lock_stack_depth:
-            current_lock_stack.append('%x' % j['lock'])
+            current_lock_stack.append(lock_hex)
             register_lock_stack(current_lock_stack)
 
         else:
             lock_stack_depth_too_large = True
+
+        last_used_by[lock_hex] = resolve_addresses(core_file, j['caller'])
 
         # cannot use 'durations' in case unlocks are performed more often than locks
         if not j['lock'] in l_durations:
@@ -437,12 +443,16 @@ while True:
                 del by_who_t[j['tid']][j['lock']]
 
     elif j['type'] == 'data' and j['action'] == 'readlock':
+        lock_hex = '%x' % j['lock']
+
         if len(current_lock_stack) < max_lock_stack_depth:
-            current_lock_stack.append('%x' % j['lock'])
+            current_lock_stack.append(lock_hex)
             register_lock_stack(current_lock_stack)
 
         else:
             lock_stack_depth_too_large = True
+
+        last_used_by[lock_hex] = resolve_addresses(core_file, j['caller'])
 
         if not j['lock'] in rw_state:
             rw_state[j['lock']] = set()
@@ -488,12 +498,16 @@ while True:
         l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
 
     elif j['type'] == 'data' and j['action'] == 'writelock':
+        lock_hex = '%x' % j['lock']
+
         if len(current_lock_stack) < max_lock_stack_depth:
-            current_lock_stack.append('%x' % j['lock'])
+            current_lock_stack.append(lock_hex)
             register_lock_stack(current_lock_stack)
 
         else:
             lock_stack_depth_too_large = True
+
+        last_used_by[lock_hex] = resolve_addresses(core_file, j['caller'])
 
         if not j['lock'] in rw_state:
             rw_state[j['lock']] = set()
@@ -733,6 +747,11 @@ def emit_durations(fh_out, durations, l_durations, contended):
         print('<tr><td>maximum:</td><td>%.2fns</td></tr>' % sorted_list[-1], file=fh_out)
         print('<tr><td>first unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d]['first_unlock']['epoch'])), durations[d]['first_unlock']['idx']), file=fh_out)
         print('<tr><td>last unlock seen:</td><td>%s (index %s)</td></tr>' % (my_ctime(int(durations[d]['last_unlock']['epoch'])), durations[d]['last_unlock']['idx']), file=fh_out)
+        print('</table>', file=fh_out)
+
+        print('<table><tr><th>last used by</th></tr>', file=fh_out)
+        for symbol in last_used_by['%x' % d]:
+            print('<tr><td>%s</td></tr>' % symbol, file=fh_out)
         print('</table>', file=fh_out)
 
         # this can be implemented way smarter
