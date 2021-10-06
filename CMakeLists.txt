@@ -42,6 +42,7 @@ target_link_libraries(lock_tracer -rdynamic)
 target_link_libraries(test -rdynamic)
 
 target_compile_options(lock_tracer PRIVATE "-Wall")
+target_compile_options(lock_tracer PRIVATE "-pedantic")
 target_compile_options(test PRIVATE "-Wall")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -ggdb3")
