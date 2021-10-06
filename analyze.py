@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 
 # (C) 2021 by folkert@vanheusden.com
-# released under GPL v3.0
+# released under Apache license 2.0
 
 import getopt
 import json
@@ -21,6 +21,9 @@ human_friendly_backtrace = False
 exe_name = '?'
 
 fh_out = sys.stdout
+
+max_lock_stack_depth = 1024
+lock_stack_depth_too_large = False
 
 billion = 1000000000
 
@@ -175,9 +178,10 @@ def emit_header():
     print('<li><a href="#sltid">still locked - grouped by TID</a>', file=fh_out)
     print('<li><a href="#durations">locking durations</a>', file=fh_out)
     print('<li><a href="#lastmutexuse">where were mutexes used last</a>', file=fh_out)
+    print('<li><a href="#lockstacks">lock stacks</a>', file=fh_out)
     print('</ul>', file=fh_out)
 
-    print('<a name="meta"></a><h2>META DATA</h2>', file=fh_out)
+    print('<h2 id="meta">META DATA</h2>', file=fh_out)
     print('<table><tr><th colspan=2>meta data</th></tr>', file=fh_out)
     print('<tr><td>executable:</td><td>%s</td></tr>' % exe_name, file=fh_out)
     print('<tr><td>PID:</td><td>%d</td></tr>' % pid, file=fh_out)
@@ -200,7 +204,7 @@ def emit_header():
     print('<tr><td># rwlock try-timed-rwlock</td><td>%d</td></tr>' % cnt_rwlock_try_timedwrlock, file=fh_out)
     print('</table>', file=fh_out)
 
-    print('<a name="double"></a><h2>DOUBLE LOCKS/UNLOCKS</h2>', file=fh_out)
+    print('<h2 id="double">DOUBLE LOCKS/UNLOCKS</h2>', file=fh_out)
     print('<ul>', file=fh_out)
 
 def mutex_kind_to_str(mk):
@@ -225,6 +229,19 @@ def mutex_kind_to_str(mk):
 
 if trace_file:
     fh = open(trace_file)
+
+lock_stacks = dict()
+
+current_lock_stack = []
+
+def register_lock_stack(st):
+    name = '|'.join(st)
+
+    if name in lock_stacks:
+        lock_stacks[name] += 1
+
+    else:
+        lock_stacks[name] = 1
 
 while True:
     if trace_file:
@@ -298,6 +315,13 @@ while True:
     elif j['type'] == 'data' and j['action'] == 'lock':
         resolve_addresses(core_file, j['caller'])
 
+        if len(current_lock_stack) < max_lock_stack_depth:
+            current_lock_stack.append('%x' % j['lock'])
+            register_lock_stack(current_lock_stack)
+
+        else:
+            lock_stack_depth_too_large = True
+
         # cannot use 'durations' in case unlocks are performed more often than locks
         if not j['lock'] in l_durations:
             l_durations[j['lock']] = dict()
@@ -353,6 +377,14 @@ while True:
         by_who_t[j['tid']][j['lock']] = j
 
     elif j['type'] == 'data' and j['action'] == 'unlock':
+        # don't just pop the top: unlocking can be done
+        # in arbitrary order
+        check_for = '%x' % j['lock']
+        for i in range(len(current_lock_stack) - 1, -1, -1):
+            if current_lock_stack[i] == check_for:
+                del current_lock_stack[i]
+                break
+
         resolve_addresses(core_file, j['caller'])
 
         if not j['lock'] in used_in_tid:
@@ -405,6 +437,13 @@ while True:
                 del by_who_t[j['tid']][j['lock']]
 
     elif j['type'] == 'data' and j['action'] == 'readlock':
+        if len(current_lock_stack) < max_lock_stack_depth:
+            current_lock_stack.append('%x' % j['lock'])
+            register_lock_stack(current_lock_stack)
+
+        else:
+            lock_stack_depth_too_large = True
+
         if not j['lock'] in rw_state:
             rw_state[j['lock']] = set()
 
@@ -449,6 +488,13 @@ while True:
         l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
 
     elif j['type'] == 'data' and j['action'] == 'writelock':
+        if len(current_lock_stack) < max_lock_stack_depth:
+            current_lock_stack.append('%x' % j['lock'])
+            register_lock_stack(current_lock_stack)
+
+        else:
+            lock_stack_depth_too_large = True
+
         if not j['lock'] in rw_state:
             rw_state[j['lock']] = set()
 
@@ -493,6 +539,14 @@ while True:
         l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
 
     elif j['type'] == 'data' and j['action'] == 'rwunlock':
+        # don't just pop the top: unlocking can be done
+        # in arbitrary order
+        check_for = '%x' % j['lock']
+        for i in range(len(current_lock_stack) - 1, -1, -1):
+            if current_lock_stack[i] == check_for:
+                del current_lock_stack[i]
+                break
+
         if j['tid'] in rw_state[j['lock']]:
             rw_state[j['lock']].remove(j['tid'])
 
@@ -563,7 +617,7 @@ def pp_record(j, end_ts, with_li):
 
     return rc
 
-print('<a name="deadlocks"></a><h2>DEADLOCKS</h2>', file=fh_out)
+print('<h2 id="deadlocks">DEADLOCKS</h2>', file=fh_out)
 print('<ul>', file=fh_out)
 
 any_dl = False
@@ -584,7 +638,7 @@ if not any_dl:
 
 print('</ul>', file=fh_out)
 
-print('<a name="slmut"></a><h2>STILL LOCKED (grouped by mutex)</h2>', file=fh_out)
+print('<h2 id="slmut">STILL LOCKED (grouped by mutex)</h2>', file=fh_out)
 print('<ul>', file=fh_out)
 
 any_slm = False
@@ -609,7 +663,7 @@ if not any_slm:
 
 print('</ul>', file=fh_out)
 
-print('<a name="sltid"></a><h2>STILL LOCKED (grouped by TID)</h2>', file=fh_out)
+print('<h2 id="sltid">STILL LOCKED (grouped by TID)</h2>', file=fh_out)
 print('<ul>', file=fh_out)
 
 any_slt = False
@@ -634,7 +688,7 @@ if not any_slt:
 
 print('</ul>', file=fh_out)
 
-print('<a name="lastmutexuse"></a><h2>MUTEX USED LOCATIONS</h2>', file=fh_out)
+print('<h2 id="lastmutexuse">MUTEX USED LOCATIONS</h2>', file=fh_out)
 
 temp = state
 temp.update(before)
@@ -648,7 +702,7 @@ for r in temp:
     if j['lock'] in used_in_tid:
         print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[j['lock']])), file=fh_out)
 
-print('<a name="durations"></a><h2>LOCKING DURATIONS</h2>', file=fh_out)
+print('<h2 id="durations">LOCKING DURATIONS</h2>', file=fh_out)
 
 print('<h3>MUTEXES</h3>', file=fh_out)
 
@@ -658,7 +712,7 @@ def emit_durations(fh_out, durations, l_durations, contended):
         avg = durations[d]['sum_took'] / n
         sd = math.sqrt((durations[d]['sd_sum_took'] / n) - math.pow(avg, 2.0))
 
-        print('<h4>mutex: %016x</h4>' % d, file=fh_out)
+        print('<h4 id="lock_info_%x">lock: %016x</h4>' % (d, d), file=fh_out)
 
         print('<table><tr><th>what</th><th>value</th></tr>', file=fh_out)
         print('<tr><td># locks/unlocks:</td><td>%d</td></tr>' % n, file=fh_out)
@@ -715,6 +769,31 @@ emit_durations(fh_out, durations, l_durations, contended)
 print('<h3>R/W LOCKS</h3>', file=fh_out)
 
 emit_durations(fh_out, rw_durations, rw_l_durations, rw_contended)
+
+print('<h2 id="lockstacks">LOCK STACKS</h2>', file=fh_out)
+
+if lock_stack_depth_too_large:
+    print('<p><b>NOTE:</b> one or more stack trace depths were too large; results may be unusable</p>', file=fh_out)
+
+print('<table><tr><th>count</th><th>stack (right most is most recent)</th></tr>', file=fh_out)
+
+sorted_stacks = dict(sorted(lock_stacks.items(), key=lambda item: item[1], reverse=True))
+for k in sorted_stacks:
+    stack = k.split('|')
+
+    out = None
+    for lock in stack:
+        if out is None:
+            out = ''
+
+        else:
+            out += " "
+
+        out += '<a href="#lock_info_%s">%s</a>' % (lock, lock)
+
+    print('<tr><td>%d</td><td>%s</td></tr>' % (sorted_stacks[k], out), file=fh_out)
+
+print('</table>', file=fh_out)
 
 print('<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></ht,l>', file=fh_out)
 

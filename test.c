@@ -110,7 +110,7 @@ void test_mutex()
 	uint64_t dummy = 0;
 	for(int i=0; i<1024; i++) { /* test adaptive lock */
 		pthread_mutex_lock(&mutex3);
-		dummy += i;
+		dummy += i * cnt;
 		pthread_mutex_unlock(&mutex3);
 	}
 }
