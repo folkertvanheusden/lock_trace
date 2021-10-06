@@ -246,7 +246,7 @@ while True:
         PTHREAD_MUTEX_RECURSIVE = j['mutex_type_recursive']
 
     elif j['type'] == 'meta' and 'mutex_type_errorcheck' in j:
-        PTHREAD_MUTEX_ERRORCHEK = j['mutex_type_errorcheck']
+        PTHREAD_MUTEX_ERRORCHECK = j['mutex_type_errorcheck']
 
     elif j['type'] == 'meta' and 'start_ts' in j:
         start_ts = j['start_ts']
