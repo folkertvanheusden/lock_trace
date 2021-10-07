@@ -65,6 +65,8 @@ size_t length = 0;
 
 bool fork_warning = false;
 
+bool enforce_error_check = false;
+
 static void color(const char *str)
 {
 #ifdef WITH_COLORS
@@ -346,6 +348,11 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	if (unlikely(!org_pthread_mutex_lock_h))
 		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 
+        if (enforce_error_check) {
+		if (mutex->__data.__kind == PTHREAD_MUTEX_NORMAL || mutex->__data.__kind == PTHREAD_MUTEX_ADAPTIVE_NP || mutex->__data.__kind == PTHREAD_MUTEX_RECURSIVE)
+			mutex->__data.__kind = PTHREAD_MUTEX_ERRORCHECK;
+	}
+
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_mutex_lock_h)(mutex);
 	uint64_t end_ts = get_ns();
@@ -610,6 +617,10 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	const char *env_n_records = getenv("TRACE_N_RECORDS");
 	if (env_n_records)
 		n_records = atoll(env_n_records);
+
+	enforce_error_check = getenv("ENFORCE_ERR_CHK") != nullptr;
+	if (enforce_error_check)
+		fprintf(stderr, "Replacing all mutexes by error-checking mutexes\n");
 
 	fprintf(stderr, "Tracing max. %zu records\n", n_records);
 
