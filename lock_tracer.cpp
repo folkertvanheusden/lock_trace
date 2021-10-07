@@ -212,6 +212,8 @@ static void show_items_buffer_full_error()
 	static bool error_shown = false;
 
 	if (!error_shown) {
+		error_shown = true;
+
 		color("\033[0;31m");
 		fprintf(stderr, "Trace buffer full\n");
 		color("\033[0m");
@@ -775,24 +777,13 @@ void exit(int status)
 			else if (items[i].la == a_rw_unlock)
 				action_name = "rwunlock", rw_lock = true;
 
-#ifdef STORE_THREAD_NAME
-			char *name = items[i].thread_name;
-			int len = strlen(name);
-
-			for(int i=0; i<len; i++) {
-				if (name[i] < 33 || name[i] > 126)
-					name[i] = '_';
-			}
-#else
-			char name[16] = { 0 };
-#endif
-
-			if (name[0] == 0x00) {
-				name[0] = '?';
-				name[1] = 0x00;
-			}
-
 			json_t *obj = json_object();
+
+			if (items[i].thread_name[0])
+				json_object_set(obj, "thread_name", json_string(items[i].thread_name));
+			else
+				json_object_set(obj, "thread_name", json_string("?"));
+
 			json_object_set(obj, "type", json_string("data"));
 			json_object_set(obj, "t", json_integer(i));
 			json_object_set(obj, "lock", json_integer((long long unsigned int)items[i].lock));
@@ -800,7 +791,6 @@ void exit(int status)
 			json_object_set(obj, "action", json_string(action_name));
 			json_object_set(obj, "caller", json_string(caller_str));
 			json_object_set(obj, "timestamp", json_integer(items[i].timestamp));
-			json_object_set(obj, "thread_name", json_string(name));
 			json_object_set(obj, "lock_took", json_integer(items[i].lock_took));
 
 			if (rw_lock) {
