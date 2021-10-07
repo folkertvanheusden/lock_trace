@@ -51,6 +51,8 @@
 
 #define USE_CLOCK CLOCK_REALTIME
 
+#define MUTEX_SANITY_CHECKS
+
 /////////////////////////////////////
 
 #ifndef __linux__
@@ -348,6 +350,11 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	if (unlikely(!org_pthread_mutex_lock_h))
 		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
 
+#ifdef MUTEX_SANITY_CHECKS
+	if (mutex->__data.__kind < 0 || mutex->__data.__kind > PTHREAD_MUTEX_ADAPTIVE_NP)
+		fprintf(stderr, "Mutex %p has unknown type %d (caller: %p)\n", (void *)mutex, mutex->__data.__kind, __builtin_return_address(0));
+#endif
+
         if (enforce_error_check) {
 		if (mutex->__data.__kind == PTHREAD_MUTEX_NORMAL || mutex->__data.__kind == PTHREAD_MUTEX_ADAPTIVE_NP || mutex->__data.__kind == PTHREAD_MUTEX_RECURSIVE)
 			mutex->__data.__kind = PTHREAD_MUTEX_ERRORCHECK;
@@ -365,12 +372,28 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	return rc;
 }
 
+void mutex_sanity_check(pthread_mutex_t *const mutex)
+{
+#ifdef MUTEX_SANITY_CHECKS
+	if (mutex->__data.__kind < 0 || mutex->__data.__kind > PTHREAD_MUTEX_ADAPTIVE_NP)
+		fprintf(stderr, "Mutex %p has unknown type %d (caller: %p)\n", (void *)mutex, mutex->__data.__kind, __builtin_return_address(0));
+
+	if (int(mutex->__data.__nusers) < 0)
+		fprintf(stderr, "Mutex %p has suspicious '__nusers': %u (caller: %p)\n", (void *)mutex, mutex->__data.__nusers, __builtin_return_address(0));
+
+	if (mutex->__data.__lock && mutex->__data.__owner == 0)
+		fprintf(stderr, "Mutex %p has suspicious '__owner': %u with(caller: %p)\n", (void *)mutex, mutex->__data.__owner, __builtin_return_address(0));
+#endif
+}
+
 int pthread_mutex_trylock(pthread_mutex_t *mutex)
 {
 	if (unlikely(!org_pthread_mutex_trylock_h))
 		org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
 
 	cnt_mutex_trylock++;
+
+	mutex_sanity_check(mutex);
 
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
@@ -386,6 +409,8 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 {
 	if (unlikely(!org_pthread_mutex_unlock_h))
 		org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+
+	mutex_sanity_check(mutex);
 
 	int rc = (*org_pthread_mutex_unlock_h)(mutex);
 
