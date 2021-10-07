@@ -374,31 +374,31 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	return rc;
 }
 
-void mutex_sanity_check(pthread_mutex_t *const mutex)
+void mutex_sanity_check(pthread_mutex_t *const mutex, void *const caller)
 {
 #ifdef MUTEX_SANITY_CHECKS
 	if (mutex->__data.__kind < 0 || mutex->__data.__kind > PTHREAD_MUTEX_ADAPTIVE_NP)
-		fprintf(stderr, "Mutex %p has unknown type %d (caller: %p)\n", (void *)mutex, mutex->__data.__kind, __builtin_return_address(0));
+		fprintf(stderr, "Mutex %p has unknown type %d (caller: %p)\n", (void *)mutex, mutex->__data.__kind, caller);
 
 	if (int(mutex->__data.__nusers) < 0)
-		fprintf(stderr, "Mutex %p has suspicious '__nusers': %u (caller: %p)\n", (void *)mutex, mutex->__data.__nusers, __builtin_return_address(0));
+		fprintf(stderr, "Mutex %p has suspicious '__nusers': %u (caller: %p)\n", (void *)mutex, mutex->__data.__nusers, caller);
 
 	if (mutex->__data.__lock && mutex->__data.__owner == 0)
-		fprintf(stderr, "Mutex %p has suspicious '__owner': %u with(caller: %p)\n", (void *)mutex, mutex->__data.__owner, __builtin_return_address(0));
+		fprintf(stderr, "Mutex %p has suspicious '__owner': %u with(caller: %p)\n", (void *)mutex, mutex->__data.__owner, caller);
 #endif
 }
 
-void rwlock_sanity_check(pthread_rwlock_t *const rwlock)
+void rwlock_sanity_check(pthread_rwlock_t *const rwlock, void *const caller)
 {
 #ifdef RWLOCK_SANITY_CHECKS
 	if (int(rwlock->__data.__readers) < 0)
-		fprintf(stderr, "rwlock %p has suspicious '__readers': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__readers, __builtin_return_address(0));
+		fprintf(stderr, "rwlock %p has suspicious '__readers': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__readers, caller);
 
 	if (int(rwlock->__data.__writers) < 0)
-		fprintf(stderr, "rwlock %p has suspicious '__writers': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__writers, __builtin_return_address(0));
+		fprintf(stderr, "rwlock %p has suspicious '__writers': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__writers, caller);
 
 	if (rwlock->__data.__writers > 0 && rwlock->__data.__cur_writer == 0)
-		fprintf(stderr, "rwlock %p has suspicious '__cur_writer': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__cur_writer, __builtin_return_address(0));
+		fprintf(stderr, "rwlock %p has suspicious '__cur_writer': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__cur_writer, caller);
 #endif
 }
 
@@ -409,7 +409,7 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 
 	cnt_mutex_trylock++;
 
-	mutex_sanity_check(mutex);
+	mutex_sanity_check(mutex, __builtin_return_address(0));
 
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
@@ -426,7 +426,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 	if (unlikely(!org_pthread_mutex_unlock_h))
 		org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 
-	mutex_sanity_check(mutex);
+	mutex_sanity_check(mutex, __builtin_return_address(0));
 
 	int rc = (*org_pthread_mutex_unlock_h)(mutex);
 
@@ -501,7 +501,7 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 	if (unlikely(!org_pthread_rwlock_rdlock_h))
 		org_pthread_rwlock_rdlock_h = (org_pthread_rwlock_rdlock)dlsym(RTLD_NEXT, "pthread_rwlock_rdlock");
 
-	rwlock_sanity_check(rwlock);
+	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_rdlock_h)(rwlock);
@@ -522,7 +522,7 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 
 	cnt_rwlock_try_rdlock++;
 
-	rwlock_sanity_check(rwlock);
+	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
 	int rc = (*org_pthread_rwlock_tryrdlock_h)(rwlock);
 
@@ -541,7 +541,7 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 
 	cnt_rwlock_try_timedrdlock++;
 
-	rwlock_sanity_check(rwlock);
+	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_timedrdlock_h)(rwlock, abstime);
@@ -562,7 +562,7 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	if (unlikely(!org_pthread_rwlock_wrlock_h))
 		org_pthread_rwlock_wrlock_h = (org_pthread_rwlock_wrlock)dlsym(RTLD_NEXT, "pthread_rwlock_wrlock");
 
-	rwlock_sanity_check(rwlock);
+	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_wrlock_h)(rwlock);
@@ -583,7 +583,7 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
 
 	cnt_rwlock_try_wrlock++;
 
-	rwlock_sanity_check(rwlock);
+	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
 	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
 
@@ -602,7 +602,7 @@ int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *
 
 	cnt_rwlock_try_timedwrlock++;
 
-	rwlock_sanity_check(rwlock);
+	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_timedwrlock_h)(rwlock, abstime);
@@ -621,7 +621,7 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 	if (unlikely(!org_pthread_rwlock_unlock_h))
 		org_pthread_rwlock_unlock_h = (org_pthread_rwlock_unlock)dlsym(RTLD_NEXT, "pthread_rwlock_unlock");
 
-	rwlock_sanity_check(rwlock);
+	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
 	int rc = (*org_pthread_rwlock_unlock_h)(rwlock);
 
