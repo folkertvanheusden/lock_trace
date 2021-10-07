@@ -524,12 +524,10 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 
 	rwlock_sanity_check(rwlock);
 
-	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_tryrdlock_h)(rwlock);
-	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts, 0);
+		store_rwlock_info(rwlock, a_r_lock, 0, 0);
 	else
 		store_rwlock_info(rwlock, a_error, 0, rc);
 
@@ -587,12 +585,10 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
 
 	rwlock_sanity_check(rwlock);
 
-	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
-	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts, 0);
+		store_rwlock_info(rwlock, a_w_lock, 0, 0);
 	else
 		store_rwlock_info(rwlock, a_error, 0, rc);
 
