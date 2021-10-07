@@ -77,8 +77,8 @@ notes
   wise). You can reduce that a bit by disabling the backtrace (see
   performance section below).
 
-* You may want to look at the 'CHANGE THESE' defines at the top of
-  lock_tracer.cpp to suit your needs.
+* You may want to look at the defines in 'config.h' to enable- or
+  disable certain functionality of lock_tracer.
 
 * If your program suddenly hangs where it did not before, then
   this may be caused by the version of 'backtrace' in libgcc
