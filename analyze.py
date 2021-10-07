@@ -135,7 +135,7 @@ by_who_t = dict()  # on tid
 durations = dict()  # how long a lock was held
 l_durations = dict()  # how long it took to get a lock
 used_in_tid = dict()
-deadlocks = []
+errors = []
 locked = dict()
 contended = dict()
 
@@ -176,7 +176,7 @@ def emit_header():
     print('<ul>', file=fh_out)
     print('<li><a href="#meta">meta data</a>', file=fh_out)
     print('<li><a href="#double">double locks/unlocks</a>', file=fh_out)
-    print('<li><a href="#deadlocks">deadlocks</a>', file=fh_out)
+    print('<li><a href="#errors">errors</a>', file=fh_out)
     print('<li><a href="#slmut">still locked - grouped by mutex</a>', file=fh_out)
     print('<li><a href="#sltid">still locked - grouped by TID</a>', file=fh_out)
     print('<li><a href="#durations">locking durations</a>', file=fh_out)
@@ -612,8 +612,8 @@ while True:
             before[p] = state[p]
             del state[p]
 
-    elif j['type'] == 'data' and j['action'] == 'deadlock':  # deadlock
-        deadlocks.append(j)
+    elif j['type'] == 'data' and j['action'] == 'error':  # errors
+        errors.append(j)
 
     else:
         print('Unknown record: %s' % j)
@@ -640,17 +640,18 @@ def pp_record(j, end_ts, with_li):
 
     return rc
 
-print('<h2 id="deadlocks">DEADLOCKS</h2>', file=fh_out)
+print('<h2 id="errors">ERRORS</h2>', file=fh_out)
 print('<ul>', file=fh_out)
 
 any_dl = False
 
-for d in range(0, len(deadlocks)):
-    print(pp_record(deadlocks[d], end_ts, True), file=fh_out)
+for d in range(0, len(errors)):
+    print(pp_record(errors[d], end_ts, True), file=fh_out)
+    print('<br>error description: %s (%d)' % (os.strerror(errors[d]['rc']), errors[d]['rc']), file=fh_out)
 
     print('<br>', file=fh_out)
 
-    dump_stacktrace(resolve_addresses(core_file, deadlocks[d]['caller']))
+    dump_stacktrace(resolve_addresses(core_file, errors[d]['caller']))
 
     print('<br>', file=fh_out)
 

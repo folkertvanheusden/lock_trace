@@ -87,7 +87,7 @@ static uint64_t get_ns()
 
 uint64_t global_start_ts = get_ns();
 
-typedef enum { a_lock, a_unlock, a_thread_clean, a_deadlock, a_r_lock, a_w_lock, a_rw_unlock } lock_action_t;
+typedef enum { a_lock, a_unlock, a_thread_clean, a_error, a_r_lock, a_w_lock, a_rw_unlock } lock_action_t;
 
 typedef struct {
 #ifdef WITH_BACKTRACE
@@ -120,6 +120,9 @@ typedef struct {
 	};
 
 	uint64_t lock_took;
+
+	// return code of the pthread function called
+	int rc;
 } lock_trace_item_t;
 
 std::atomic_uint64_t items_idx { 0 };
@@ -220,7 +223,7 @@ static void show_items_buffer_full_error()
 	}
 }
 
-static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took)
+static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took, const int rc)
 {
 	if (unlikely(!items)) {
 		// when a constructor of some other library already invokes e.g. pthread_mutex_lock
@@ -273,6 +276,8 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 #endif
 
 		items[cur_idx].lock_took = took;
+
+		items[cur_idx].rc = rc;
 	}
 	else {
 		show_items_buffer_full_error();
@@ -346,9 +351,9 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_lock, end_ts - start_ts);
-	else if (rc == EDEADLK)
-		store_mutex_info(mutex, a_deadlock, 0);
+		store_mutex_info(mutex, a_lock, end_ts - start_ts, 0);
+	else
+		store_mutex_info(mutex, a_error, 0, rc);
 
 	return rc;
 }
@@ -363,9 +368,9 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_lock, 0);
-	else if (rc == EDEADLK)
-		store_mutex_info(mutex, a_deadlock, 0);
+		store_mutex_info(mutex, a_lock, 0, 0);
+	else
+		store_mutex_info(mutex, a_error, 0, rc);
 
 	return rc;
 }
@@ -378,14 +383,14 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 	int rc = (*org_pthread_mutex_unlock_h)(mutex);
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_unlock, 0);
-	else if (rc == EDEADLK)
-		store_mutex_info(mutex, a_deadlock, 0);
+		store_mutex_info(mutex, a_unlock, 0, 0);
+	else
+		store_mutex_info(mutex, a_error, 0, rc);
 
 	return rc;
 }
 
-static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took)
+static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took, const int rc)
 {
 	if (unlikely(!items)) {
 		show_items_buffer_not_allocated_error();
@@ -435,6 +440,8 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 #endif
 
 		items[cur_idx].lock_took = took;
+
+		items[cur_idx].rc = rc;
 	}
 	else {
 		show_items_buffer_full_error();
@@ -451,9 +458,9 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
-	else if (rc == EDEADLK)
-		store_rwlock_info(rwlock, a_deadlock, 0);
+		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts, 0);
+	else
+		store_rwlock_info(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -470,9 +477,9 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
-	else if (rc == EDEADLK)
-		store_rwlock_info(rwlock, a_deadlock, 0);
+		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts, 0);
+	else
+		store_rwlock_info(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -491,9 +498,9 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 	// TODO seperate a_r_lock for timed locks as they may take quite
 	// a bit longer
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts);
-	else if (rc == EDEADLK)
-		store_rwlock_info(rwlock, a_deadlock, 0);
+		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts, 0);
+	else
+		store_rwlock_info(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -508,9 +515,9 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
-	else if (rc == EDEADLK)
-		store_rwlock_info(rwlock, a_deadlock, 0);
+		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts, 0);
+	else
+		store_rwlock_info(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -527,9 +534,9 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
-	else if (rc == EDEADLK)
-		store_rwlock_info(rwlock, a_deadlock, 0);
+		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts, 0);
+	else
+		store_rwlock_info(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -546,9 +553,9 @@ int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts);
-	else if (rc == EDEADLK)
-		store_rwlock_info(rwlock, a_deadlock, 0);
+		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts, 0);
+	else
+		store_rwlock_info(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -561,9 +568,9 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 	int rc = (*org_pthread_rwlock_unlock_h)(rwlock);
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_rw_unlock, 0);
-	else if (rc == EDEADLK)
-		store_rwlock_info(rwlock, a_deadlock, 0);
+		store_rwlock_info(rwlock, a_rw_unlock, 0, 0);
+	else
+		store_rwlock_info(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -768,8 +775,8 @@ void exit(int status)
 				action_name = "unlock";
 			else if (items[i].la == a_thread_clean)
 				action_name = "tclean";
-			else if (items[i].la == a_deadlock)
-				action_name = "deadlock";
+			else if (items[i].la == a_error)
+				action_name = "error";
 			else if (items[i].la == a_r_lock)
 				action_name = "readlock", rw_lock = true;
 			else if (items[i].la == a_w_lock)
@@ -792,6 +799,7 @@ void exit(int status)
 			json_object_set(obj, "caller", json_string(caller_str));
 			json_object_set(obj, "timestamp", json_integer(items[i].timestamp));
 			json_object_set(obj, "lock_took", json_integer(items[i].lock_took));
+			json_object_set(obj, "rc", json_integer(items[i].rc));
 
 			if (rw_lock) {
 				json_object_set(obj, "rwlock_readers", json_integer(items[i].rwlock_innards.__readers));
