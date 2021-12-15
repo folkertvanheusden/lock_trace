@@ -96,6 +96,9 @@ notes
   assumes that the cleaner(s) (see pthread_cleanup_push) will
   unlock any left over locked mutex.
 
+* "still locked" can also mean that a mutex was destroyed before
+  being unlocked.
+
 
 similar software
 ----------------
