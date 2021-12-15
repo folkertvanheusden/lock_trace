@@ -109,14 +109,14 @@ typedef struct {
 	int rc;
 } lock_trace_item_t;
 
-std::atomic_uint64_t items_idx { 0 };
+std::atomic<std::uint64_t> items_idx { 0 };
 lock_trace_item_t *items = nullptr;
 
-std::atomic_uint64_t cnt_mutex_trylock { 0 };
-std::atomic_uint64_t cnt_rwlock_try_rdlock { 0 };
-std::atomic_uint64_t cnt_rwlock_try_timedrdlock { 0 };
-std::atomic_uint64_t cnt_rwlock_try_wrlock { 0 };
-std::atomic_uint64_t cnt_rwlock_try_timedwrlock { 0 };
+std::atomic<std::uint64_t> cnt_mutex_trylock { 0 };
+std::atomic<std::uint64_t> cnt_rwlock_try_rdlock { 0 };
+std::atomic<std::uint64_t> cnt_rwlock_try_timedrdlock { 0 };
+std::atomic<std::uint64_t> cnt_rwlock_try_wrlock { 0 };
+std::atomic<std::uint64_t> cnt_rwlock_try_timedwrlock { 0 };
 
 // assuming atomic 8-byte pointer updates
 typedef int (* org_pthread_mutex_lock)(pthread_mutex_t *mutex);
