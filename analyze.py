@@ -10,6 +10,8 @@ import os
 import sys
 import time
 
+proc_start_ts = time.time()
+
 core_file = None
 
 trace_file = None
@@ -246,18 +248,30 @@ def register_lock_stack(st):
     else:
         lock_stacks[name] = 1
 
-while True:
-    if trace_file:
-        line = fh.readline()
+print('%d) Loading data...' % int(time.time() - proc_start_ts), file=sys.stderr)
 
-    else:
-        line = sys.stdin.readline()
+if trace_file:
+    json_str = '[' + fh.read().replace('\n', ',')
 
-    if not line:
-        break
+else:
+    json_str = '[' + sys.stdin.read().replace('\n', ',')
 
-    j = json.loads(line)
+if json_str[-1] == ',':
+    json_str += '{ "type":"end" }]'
 
+else:
+    json_str += ']'
+
+print('%d) Parsing json...' % int(time.time() - proc_start_ts), file=sys.stderr)
+
+js = json.loads(json_str)
+
+json_str = None
+del json_str
+
+print('%d) Processing data...' % int(time.time() - proc_start_ts), file=sys.stderr)
+
+for j in js:
     if j['type'] == 'meta' and 'mutex_type_normal' in j:
         PTHREAD_MUTEX_NORMAL = j['mutex_type_normal']
 
@@ -615,6 +629,9 @@ while True:
     elif j['type'] == 'data' and j['action'] == 'error':  # errors
         errors.append(j)
 
+    elif j['type'] == 'end':  # errors
+        pass
+
     else:
         print('Unknown record: %s' % j)
         sys.exit(1)
@@ -835,3 +852,5 @@ print('</table>', file=fh_out)
 print('<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></ht,l>', file=fh_out)
 
 fh_out.close()
+
+print('%d) Finished' % int(time.time() - proc_start_ts), file=sys.stderr)
