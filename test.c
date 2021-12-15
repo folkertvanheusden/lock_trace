@@ -159,6 +159,32 @@ void test_try_lock()
 	pthread_rwlock_timedwrlock(&rwlock, &ts);
 }
 
+void * signal_c_func(void *arg)
+{
+	pthread_cond_t *cond = (pthread_cond_t *)arg;
+	usleep(501000);
+	pthread_cond_signal(cond);
+
+	return NULL;
+}
+
+void test_conditional()
+{
+	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+	pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+	pthread_setname_np(pthread_self(), "test-conditional");
+
+	pthread_t signal_c;
+	pthread_create(&signal_c, NULL, signal_c_func, &cond);
+
+	pthread_mutex_lock(&mutex);
+	pthread_cond_wait(&cond, &mutex);
+	pthread_mutex_unlock(&mutex);
+
+	pthread_join(signal_c, NULL);
+}
+
 int main(int argc, char *argv[])
 {
 	test_mutex();
@@ -166,6 +192,8 @@ int main(int argc, char *argv[])
 	test_rwlock();
 
 	test_try_lock();
+
+	test_conditional();
 
 	pthread_setname_np(pthread_self(), "main");
 
