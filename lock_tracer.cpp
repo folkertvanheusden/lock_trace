@@ -14,6 +14,7 @@
 #include <map>
 #include <pthread.h>
 #include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -136,9 +137,6 @@ org_pthread_setname_np org_pthread_setname_np_h = nullptr;
 
 typedef pid_t (* org_fork)(void);
 org_fork org_fork_h = nullptr;
-
-typedef void (* org_exit)(int status);
-org_exit org_exit_h = nullptr;
 
 typedef int (* org_pthread_rwlock_rdlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_rdlock org_pthread_rwlock_rdlock_h = nullptr;
@@ -889,15 +887,9 @@ void exit(int status)
 
     munmap(items, length);
 
-    // some child process may still be running for which we
-    // also like to see the statistics
-    if (fork_warning) {
-        org_exit_h = (org_exit)dlsym(RTLD_NEXT, "exit");
-
-        return (*org_exit_h)(status);
-    }
-
-    assert(0);
+    // dump core
+    signal(SIGABRT, SIG_DFL);
+    abort();
 }
 
 void __attribute__ ((destructor)) stop_lock_tracing()
