@@ -740,8 +740,8 @@ for r in temp:
 
     dump_stacktrace(resolve_addresses(core_file, temp[r]['caller']))
 
-    if j['lock'] in used_in_tid:
-        print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[j['lock']])), file=fh_out)
+    if r in used_in_tid:
+        print('<p>Threads (by TID) mutex seen in: %s</p>' % ', '.join(sorted(used_in_tid[r])), file=fh_out)
 
 print('<h2 id="durations">LOCKING DURATIONS</h2>', file=fh_out)
 
