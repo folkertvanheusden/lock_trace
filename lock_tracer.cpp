@@ -167,8 +167,6 @@ static int _gettid()
 	return syscall(__NR_gettid);
 }
 
-thread_local bool prevent_backtrace = false;
-
 // check that function pointers that are required for 'tid_names'-
 // map handling are resolved
 static void check_tid_names_lock_functions()
@@ -208,7 +206,7 @@ static void show_items_buffer_full_error()
 	}
 }
 
-static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took, const int rc)
+static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took, const int rc, void *const shallow_backtrace)
 {
 	if (unlikely(!items)) {
 		// when a constructor of some other library already invokes e.g. pthread_mutex_lock
@@ -221,17 +219,11 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
-		bool get_backtrace = !prevent_backtrace;
-
-		if (likely(get_backtrace)) {
 #ifdef PREVENT_RECURSION
-			prevent_backtrace = true;
-#endif
+            items[cur_idx].caller[0] = shallow_backtrace;
+#else
 			backtrace(items[cur_idx].caller, CALLER_DEPTH);
-#ifdef PREVENT_RECURSION
-			prevent_backtrace = false;
 #endif
-		}
 #endif
 		items[cur_idx].lock = mutex;
 		items[cur_idx].tid = _gettid();
@@ -269,6 +261,12 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 	}
 }
 
+#if defined(PREVENT_RECURSION) && defined(WITH_BACKTRACE)
+#define STORE_MUTEX_INFO(a, b, c, d) store_mutex_info(a, b, c, d, __builtin_return_address(0))
+#else
+#define STORE_MUTEX_INFO(a, b, c, d) store_mutex_info(a, b, c, d, nullptr) 
+#endif
+
 pid_t fork(void)
 {
 	if (unlikely(!org_fork_h))
@@ -282,8 +280,6 @@ pid_t fork(void)
 #ifdef CAPTURE_PTHREAD_EXIT
 void pthread_exit(void *retval)
 {
-	prevent_backtrace = true;
-
 	if (likely(items != nullptr)) {
 		uint64_t cur_idx = items_idx++;
 
@@ -346,9 +342,9 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_lock, end_ts - start_ts, 0);
+		STORE_MUTEX_INFO(mutex, a_lock, end_ts - start_ts, 0);
 	else
-		store_mutex_info(mutex, a_error, 0, rc);
+		STORE_MUTEX_INFO(mutex, a_error, 0, rc);
 
 	return rc;
 }
@@ -395,9 +391,9 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_lock, 0, 0);
+		STORE_MUTEX_INFO(mutex, a_lock, 0, 0);
 	else
-		store_mutex_info(mutex, a_error, 0, rc);
+		STORE_MUTEX_INFO(mutex, a_error, 0, rc);
 
 	return rc;
 }
@@ -412,14 +408,14 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 	int rc = (*org_pthread_mutex_unlock_h)(mutex);
 
 	if (likely(rc == 0))
-		store_mutex_info(mutex, a_unlock, 0, 0);
+		STORE_MUTEX_INFO(mutex, a_unlock, 0, 0);
 	else
-		store_mutex_info(mutex, a_error, 0, rc);
+		STORE_MUTEX_INFO(mutex, a_error, 0, rc);
 
 	return rc;
 }
 
-static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took, const int rc)
+static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64_t took, const int rc, void *const shallow_backtrace)
 {
 	if (unlikely(!items)) {
 		show_items_buffer_not_allocated_error();
@@ -430,17 +426,11 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
-		bool get_backtrace = !prevent_backtrace;
-
-		if (likely(get_backtrace)) {
 #ifdef PREVENT_RECURSION
-			prevent_backtrace = true;
-#endif
+            items[cur_idx].caller[0] = shallow_backtrace;
+#else
 			backtrace(items[cur_idx].caller, CALLER_DEPTH);
-#ifdef PREVENT_RECURSION
-			prevent_backtrace = false;
 #endif
-		}
 #endif
 		items[cur_idx].lock = rwlock;
 		items[cur_idx].tid = _gettid();
@@ -481,6 +471,13 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 	}
 }
 
+#if defined(PREVENT_RECURSION) && defined(WITH_BACKTRACE)
+#define STORE_RWLOCK_INFO(a, b, c, d) store_rwlock_info(a, b, c, d, __builtin_return_address(0))
+#else
+#define STORE_RWLOCK_INFO(a, b, c, d) store_rwlock_info(a, b, c, d, nullptr) 
+#endif
+
+
 int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 {
 	if (unlikely(!org_pthread_rwlock_rdlock_h))
@@ -493,9 +490,9 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts, 0);
+		STORE_RWLOCK_INFO(rwlock, a_r_lock, end_ts - start_ts, 0);
 	else
-		store_rwlock_info(rwlock, a_error, 0, rc);
+		STORE_RWLOCK_INFO(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -512,9 +509,9 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 	int rc = (*org_pthread_rwlock_tryrdlock_h)(rwlock);
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_r_lock, 0, 0);
+		STORE_RWLOCK_INFO(rwlock, a_r_lock, 0, 0);
 	else
-		store_rwlock_info(rwlock, a_error, 0, rc);
+		STORE_RWLOCK_INFO(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -535,9 +532,9 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 	// TODO seperate a_r_lock for timed locks as they may take quite
 	// a bit longer
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_r_lock, end_ts - start_ts, 0);
+		STORE_RWLOCK_INFO(rwlock, a_r_lock, end_ts - start_ts, 0);
 	else
-		store_rwlock_info(rwlock, a_error, 0, rc);
+		STORE_RWLOCK_INFO(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -554,9 +551,9 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts, 0);
+		STORE_RWLOCK_INFO(rwlock, a_w_lock, end_ts - start_ts, 0);
 	else
-		store_rwlock_info(rwlock, a_error, 0, rc);
+		STORE_RWLOCK_INFO(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -573,9 +570,9 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
 	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, 0, 0);
+		STORE_RWLOCK_INFO(rwlock, a_w_lock, 0, 0);
 	else
-		store_rwlock_info(rwlock, a_error, 0, rc);
+		STORE_RWLOCK_INFO(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -594,9 +591,9 @@ int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *
 	uint64_t end_ts = get_ns();
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_w_lock, end_ts - start_ts, 0);
+		STORE_RWLOCK_INFO(rwlock, a_w_lock, end_ts - start_ts, 0);
 	else
-		store_rwlock_info(rwlock, a_error, 0, rc);
+		STORE_RWLOCK_INFO(rwlock, a_error, 0, rc);
 
 	return rc;
 }
@@ -611,9 +608,9 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 	int rc = (*org_pthread_rwlock_unlock_h)(rwlock);
 
 	if (likely(rc == 0))
-		store_rwlock_info(rwlock, a_rw_unlock, 0, 0);
+		STORE_RWLOCK_INFO(rwlock, a_rw_unlock, 0, 0);
 	else
-		store_rwlock_info(rwlock, a_error, 0, rc);
+		STORE_RWLOCK_INFO(rwlock, a_error, 0, rc);
 
 	return rc;
 }

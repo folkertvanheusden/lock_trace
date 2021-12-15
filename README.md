@@ -89,8 +89,8 @@ notes
   using 'pthread_mutex' underneath.
   There are two solutions:
   * disable backrace recording (see notes on WITH_BACKTRACE below)
-  * uncomment PREVENT_RECURSION which adds an extra check to see
-    if there's a loop
+  * uncomment PREVENT_RECURSION which makes it do a "shallow back-
+    trace" (1 record)
 
 * Note that capturing pthread_exit may introduce inaccuracies: it
   assumes that the cleaner(s) (see pthread_cleanup_push) will
