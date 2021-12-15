@@ -12,7 +12,8 @@ requirements
 ------------
 analyze.py needs the '/usr/bin/eu-addr2line' program from the
 'elfutils' package. Also lock_tracer.cpp requires 'libc6-dev'
-and 'libjansson-dev' packages to build.
+and 'libjansson-dev' (glibc-devel and jansson-devel on rpm
+systems) packages to build.
 
 
 building
@@ -23,6 +24,9 @@ cd build
 cmake ..
 make
 ```
+
+If the cmake on your system is too old (or not installed), try:
+./build-wo-cmake.sh
 
 
 usage

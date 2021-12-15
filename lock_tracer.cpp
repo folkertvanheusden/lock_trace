@@ -369,6 +369,7 @@ void mutex_sanity_check(pthread_mutex_t *const mutex, void *const caller)
 void rwlock_sanity_check(pthread_rwlock_t *const rwlock, void *const caller)
 {
 #ifdef RWLOCK_SANITY_CHECKS
+#if __GLIBC_PREREQ(2, 30)
 	if (int(rwlock->__data.__readers) < 0)
 		fprintf(stderr, "rwlock %p has suspicious '__readers': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__readers, caller);
 
@@ -377,6 +378,7 @@ void rwlock_sanity_check(pthread_rwlock_t *const rwlock, void *const caller)
 
 	if (rwlock->__data.__writers > 0 && rwlock->__data.__cur_writer == 0)
 		fprintf(stderr, "rwlock %p has suspicious '__cur_writer': %u (caller: %p)\n", (void *)rwlock, rwlock->__data.__cur_writer, caller);
+#endif
 #endif
 }
 
@@ -457,9 +459,13 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 		}
 #endif
 
+#if __GLIBC_PREREQ(2, 30)
 		items[cur_idx].rwlock_innards.__readers = rwlock->__data.__readers;
 		items[cur_idx].rwlock_innards.__writers = rwlock->__data.__writers;
-#if __x86_64__
+#else
+		items[cur_idx].rwlock_innards.__readers = rwlock->__data.__nr_readers;
+#endif
+#if defined(__x86_64__) && __GLIBC_PREREQ(2, 30)
 		items[cur_idx].rwlock_innards.__cur_writer  = rwlock->__data.__cur_writer;
 #else
 		items[cur_idx].rwlock_innards.__cur_writer  = 0;
