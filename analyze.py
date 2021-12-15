@@ -693,7 +693,7 @@ for bw in by_who_m:
 
             print('<br>', file=fh_out)
 
-            dump_stacktrace(resolve_addresses(core_file, r))
+            dump_stacktrace(resolve_addresses(core_file, r['caller']))
 
             print('<br>', file=fh_out)
 
@@ -718,7 +718,7 @@ for bw in by_who_t:
 
             print('<br>', file=fh_out)
 
-            dump_stacktrace(resolve_addresses(core_file, r))
+            dump_stacktrace(resolve_addresses(core_file, r['caller']))
 
             print('<br>', file=fh_out)
 
