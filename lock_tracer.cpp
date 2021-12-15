@@ -46,7 +46,7 @@ uint64_t n_records = 16777216;
 size_t length = 0;
 
 bool fork_warning = false;
-
+bool exited = false;
 bool enforce_error_check = false;
 
 static void color(const char *str)
@@ -136,6 +136,9 @@ org_pthread_setname_np org_pthread_setname_np_h = nullptr;
 
 typedef pid_t (* org_fork)(void);
 org_fork org_fork_h = nullptr;
+
+typedef void (* org_exit)(int status);
+org_exit org_exit_h = nullptr;
 
 typedef int (* org_pthread_rwlock_rdlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_rdlock org_pthread_rwlock_rdlock_h = nullptr;
@@ -706,6 +709,7 @@ static void emit_key_value(FILE *fh, const char *key, const uint64_t value)
 
 void exit(int status)
 {
+    exited = true;
 	uint64_t end_ts = get_ns();
 
 	color("\033[0;31m");
@@ -881,14 +885,23 @@ void exit(int status)
 	// memory
 	items_idx = n_records;
 
-	munmap(items, length);
-
 	delete tid_names;
 
-	assert(0);
+    munmap(items, length);
+
+    // some child process may still be running for which we
+    // also like to see the statistics
+    if (fork_warning) {
+        org_exit_h = (org_exit)dlsym(RTLD_NEXT, "exit");
+
+        return (*org_exit_h)(status);
+    }
+
+    assert(0);
 }
 
 void __attribute__ ((destructor)) stop_lock_tracing()
 {
-	exit(0);
+    if (!exited)
+        exit(0);
 }
