@@ -29,10 +29,17 @@ lock_stack_depth_too_large = False
 
 billion = 1000000000
 
+def help():
+    print('-c --core      path to the core file')
+    print('-t --trace     path to the trace file')
+    print('-r --resolver  path to the symbol resolver (\'eu-addr2line\')')
+    print('-f             file to write report to, skip for stdout')
+
 try:
     opts, args = getopt.getopt(sys.argv[1:], "c:t:r:bf:", ["core=", "trace=", "resolver=", "human-backtrace", "file="])
 except getopt.GetoptError as err:
     print(err)
+    help()
     sys.exit(1)
 
 for o, a in opts:
@@ -50,10 +57,7 @@ for o, a in opts:
 
     else:
         print('Invalid command line parameter: %s %s' % (o, a))
-        print('-c --core      path to the core file')
-        print('-t --trace     path to the trace file')
-        print('-r --resolver  path to the symbol resolver (\'eu-addr2line\')')
-        print('-f             file to write report to, skip for stdout')
+        help()
         assert False, "unhandled option"
 
 check_by_itself = False  # only (when True) check for "locked by itself earlier"
