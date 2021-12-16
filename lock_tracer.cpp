@@ -43,8 +43,9 @@
 #define likely(x)       __builtin_expect((x), 1)
 #define unlikely(x)     __builtin_expect((x), 0)
 
-uint64_t n_records = 16777216;
+uint64_t n_records = 16777216, emit_count_threshold = n_records / 10;
 size_t length = 0;
+bool verbose = false;
 
 bool fork_warning = false;
 bool exited = false;
@@ -205,6 +206,19 @@ static void show_items_buffer_not_allocated_error()
 	}
 }
 
+static void print_timestamp()
+{
+    time_t now = time(nullptr);
+    char buffer[26 + 1], *lf;
+
+    ctime_r(&now, buffer);
+    lf = strchr(buffer, '\n');
+    if (lf)
+        *lf = 0x00;
+
+    fprintf(stderr, "%s ", buffer);
+}
+
 static void show_items_buffer_full_error()
 {
 	static bool error_shown = false;
@@ -213,9 +227,18 @@ static void show_items_buffer_full_error()
 		error_shown = true;
 
 		color("\033[0;31m");
+        print_timestamp();
 		fprintf(stderr, "Trace buffer full\n");
 		color("\033[0m");
 	}
+}
+
+static void show_items_buffer_percent()
+{
+    color("\033[0;31m");
+    print_timestamp();
+    fprintf(stderr, "Trace buffer %.2f%% full\n", items_idx * 100.0 / n_records);
+    color("\033[0m");
 }
 
 static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took, const int rc, void *const shallow_backtrace)
@@ -228,6 +251,11 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 	}
 
 	uint64_t cur_idx = items_idx++;
+
+    if (verbose) {
+        if (cur_idx % emit_count_threshold == 0)
+            show_items_buffer_percent();
+    }
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
@@ -457,6 +485,11 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 	}
 
 	uint64_t cur_idx = items_idx++;
+
+    if (verbose) {
+        if (cur_idx % emit_count_threshold == 0)
+            show_items_buffer_percent();
+    }
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
@@ -703,8 +736,15 @@ void __attribute__ ((constructor)) start_lock_tracing()
 		fprintf(stderr, "NOTE: core-files have been disabled! You may want to re-run after invoking \"ulimit -c unlimited\".\n");
 
 	const char *env_n_records = getenv("TRACE_N_RECORDS");
-	if (env_n_records)
+	if (env_n_records) {
 		n_records = atoll(env_n_records);
+
+        emit_count_threshold = n_records / 10;
+    }
+
+	verbose = getenv("TRACE_VERBOSE") != nullptr;
+    if (verbose)
+		fprintf(stderr, "Verbose tracing enabled\n");
 
 	enforce_error_check = getenv("ENFORCE_ERR_CHK") != nullptr;
 	if (enforce_error_check)
