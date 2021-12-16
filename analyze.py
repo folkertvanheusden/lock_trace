@@ -275,6 +275,9 @@ del json_str
 
 print('%d) Processing data...' % int(time.time() - proc_start_ts), file=sys.stderr)
 
+errors_double_lock_rw = dict()
+errors_invalid_unlock_rw = dict()
+
 for j in js:
     if j['type'] == 'meta' and 'mutex_type_normal' in j:
         PTHREAD_MUTEX_NORMAL = j['mutex_type_normal']
@@ -498,9 +501,13 @@ for j in js:
             rw_state[j['lock']] = set()
 
         if j['tid'] in rw_state[j['lock']]:
-            print('<h3>Double r/w-lock read lock by same thread</h3>', file=fh_out)
-            print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name']), file=fh_out)
-            dump_stacktrace(resolve_addresses(core_file, j['caller']))
+            key = '%s|%s' % (j['lock'], j['caller'])
+
+            if key in errors_double_lock_rw:
+                errors_double_lock_rw[key][0] += 1
+
+            else:
+                errors_double_lock_rw[key] = [ 1, j ]
 
         else:
             rw_state[j['lock']].add(j['tid'])
@@ -585,9 +592,13 @@ for j in js:
             rw_state[j['lock']].remove(j['tid'])
 
         else:
-            print('<h3>Invalid r/w-lock unlock (not in list)</h3>', file=fh_out)
-            print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name']), file=fh_out)
-            dump_stacktrace(resolve_addresses(core_file, j['caller']))
+            key = '%s|%s' % (j['lock'], j['caller'])
+
+            if key in errors_invalid_unlock_rw:
+                errors_invalid_unlock_rw[key][0] += 1
+
+            else:
+                errors_invalid_unlock_rw[key] = [ 1, j ]
 
         if j['lock'] in rw_by_who_m:
             if j['tid'] in rw_by_who_m[j['lock']]:
@@ -647,6 +658,20 @@ for j in js:
     else:
         print('Unknown record: %s' % j)
         sys.exit(1)
+
+for key in errors_double_lock_rw:
+    e = errors_double_lock_rw[key]
+
+    print('<h3>Double r/w-lock read lock by same thread</h3>', file=fh_out)
+    print('<p>count: %d, mutex: %016x, tid: %s, thread name: %s</p>' % (e[0], e[1]['lock'], e[1]['tid'], e[1]['thread_name']), file=fh_out)
+    dump_stacktrace(resolve_addresses(core_file, e[1]['caller']))
+
+for key in errors_invalid_unlock_rw:
+    e = errors_invalid_unlock_rw[key]
+
+    print('<h3>Invalid r/w-lock unlock (not in list)</h3>', file=fh_out)
+    print('<p>count: %d, mutex: %016x, tid: %s, thread name: %s</p>' % (e[0], e[1]['lock'], e[1]['tid'], e[1]['thread_name']), file=fh_out)
+    dump_stacktrace(resolve_addresses(core_file, e[1]['caller']))
 
 if not any_records:
     print('<li>---', file=fh_out)
