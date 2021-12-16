@@ -258,33 +258,11 @@ def register_lock_stack(st):
     else:
         lock_stacks[name] = 1
 
-print('%d) Loading data...' % int(time.time() - proc_start_ts), file=sys.stderr)
+js_meta = json.load(open(trace_file, 'r'))
 
-if trace_file:
-    json_str = '[' + fh.read().replace('\n', ',')
+data_json_file = None
 
-else:
-    json_str = '[' + sys.stdin.read().replace('\n', ',')
-
-if json_str[-1] == ',':
-    json_str += '{ "type":"end" }]'
-
-else:
-    json_str += ']'
-
-print('%d) Parsing json...' % int(time.time() - proc_start_ts), file=sys.stderr)
-
-js = json.loads(json_str)
-
-json_str = None
-del json_str
-
-print('%d) Processing data...' % int(time.time() - proc_start_ts), file=sys.stderr)
-
-errors_double_lock_rw = dict()
-errors_invalid_unlock_rw = dict()
-
-for j in js:
+for j in js_meta:
     if j['type'] == 'meta' and 'mutex_type_normal' in j:
         PTHREAD_MUTEX_NORMAL = j['mutex_type_normal']
 
@@ -308,6 +286,9 @@ for j in js:
 
     elif j['type'] == 'meta' and 'end_ts' in j:
         end_ts = j['end_ts']
+
+    elif j['type'] == 'meta' and 'measurements' in j:
+        data_json_file = j['measurements'][0:-3] + "json"
 
     elif j['type'] == 'meta' and 'exe_name' in j:
         exe_name = j['exe_name']
@@ -342,7 +323,24 @@ for j in js:
     elif j['type'] == 'meta' and 'scheduler' in j:
         scheduler = j['scheduler']
 
-    elif j['type'] == 'data' and j['action'] == 'lock':
+print('%d) Loading json data from %s...' % (int(time.time() - proc_start_ts), data_json_file), file=sys.stderr)
+
+js_data = json.load(open(data_json_file, 'r'))
+
+print('%d) Processing data...' % int(time.time() - proc_start_ts), file=sys.stderr)
+
+emit_header()
+
+errors_double_lock_rw = dict()
+errors_invalid_unlock_rw = dict()
+
+mutex_type_counts[PTHREAD_MUTEX_NORMAL] = 0
+mutex_type_counts[PTHREAD_MUTEX_RECURSIVE] = 0
+mutex_type_counts[PTHREAD_MUTEX_ERRORCHECK] = 0
+mutex_type_counts[PTHREAD_MUTEX_ADAPTIVE] = 0
+
+for j in js_data:
+    if j['type'] == 'data' and j['action'] == 'lock':
         lock_hex = '%x' % j['lock']
 
         if include_lock_stacks:
@@ -630,14 +628,6 @@ for j in js:
                 rw_durations[j['lock']]['last_unlock']['idx'] = j['t']
                 rw_durations[j['lock']]['last_unlock']['epoch'] = j['timestamp']
                 rw_durations[j['lock']]['median'].append(float(took))  # median
-
-    elif j['type'] == 'marker':
-        emit_header()
-
-        mutex_type_counts[PTHREAD_MUTEX_NORMAL] = 0
-        mutex_type_counts[PTHREAD_MUTEX_RECURSIVE] = 0
-        mutex_type_counts[PTHREAD_MUTEX_ERRORCHECK] = 0
-        mutex_type_counts[PTHREAD_MUTEX_ADAPTIVE] = 0
 
     elif j['type'] == 'data' and j['action'] == 'tclean':  # forget a thread
         purge = []

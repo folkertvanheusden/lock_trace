@@ -59,6 +59,12 @@ You can change the maximum number of trace records by
 setting the 'TRACE_N_RECORDS' environment variable. Defeault
 is 16777216 records.
 
+Convert binary data-dump to json (which will be processed
+by analyze.py):
+
+```
+./dat_to_json dump.dat
+```
 
 Show analysis:
 

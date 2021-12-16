@@ -38,6 +38,7 @@
 #endif
 
 #include "config.h"
+#include "lock_tracer.h"
 
 #ifndef __linux__
 #warning This program may only work correctly on Linux.
@@ -49,6 +50,7 @@
 uint64_t n_records = 16777216, emit_count_threshold = n_records / 10;
 size_t length = 0;
 int fd = -1;
+char *data_filename = nullptr;
 
 bool verbose = false;
 
@@ -77,44 +79,6 @@ static uint64_t get_ns()
 }
 
 uint64_t global_start_ts = get_ns();
-
-typedef enum { a_lock, a_unlock, a_thread_clean, a_error, a_r_lock, a_w_lock, a_rw_unlock, a_init, a_destroy, a_rw_init, a_rw_destroy } lock_action_t;
-
-typedef struct {
-#ifdef WITH_BACKTRACE
-	void *caller[CALLER_DEPTH];
-#endif
-	void *lock;
-	int tid;
-	lock_action_t la; 
-	uint64_t timestamp;
-#ifdef STORE_THREAD_NAME
-	// the one in linux is said to be max. 16 characters including 0x00 (pthread_setname_np)
-	char thread_name[16];
-#endif
-	union {
-		struct {
-			unsigned int __count;
-			int __owner;
-			int __kind;
-#ifdef __x86_64__
-			short __spins;
-			short __elision;
-#endif
-		} mutex_innards;
-
-		struct {
-			unsigned int __readers;
-			unsigned int __writers;
-			int __cur_writer;  // only on __x86_64__
-		} rwlock_innards;
-	};
-
-	uint64_t lock_took;
-
-	// return code of the pthread function called
-	int rc;
-} lock_trace_item_t;
 
 std::atomic<std::uint64_t> items_idx { 0 };
 lock_trace_item_t *items = nullptr;
@@ -757,9 +721,11 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 	fprintf(stderr, "Tracing max. %zu records\n", n_records);
 
-    fd = open("measurements.dat", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    asprintf(&data_filename, "measurements-%d.dat", getpid());
+
+    fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     if (fd == -1) {
-		fprintf(stderr, "ERROR: cannot create data file: %s\n", strerror(errno));
+		fprintf(stderr, "ERROR: cannot create data file %s: %s\n", data_filename, strerror(errno));
 		color("\033[0m");
 		_exit(1);
     }
@@ -772,7 +738,11 @@ void __attribute__ ((constructor)) start_lock_tracing()
 		_exit(1);
     }
 
+#ifdef PREALLOCATE
 	items = (lock_trace_item_t *)mmap(nullptr, length, PROT_WRITE | PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
+#else
+	items = (lock_trace_item_t *)mmap(nullptr, length, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+#endif
 
 	if (items == MAP_FAILED) {
 		fprintf(stderr, "ERROR: cannot allocate %lu bytes of memory (reduce with the \"TRACE_N_RECORDS\" environment variable): %s\n", length, strerror(errno));
@@ -794,26 +764,22 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	color("\033[0m");
 }
 
-static void emit_key_value(FILE *fh, const char *key, const char *value)
+static void emit_key_value(json_t *const tgt, const char *key, const char *value)
 {
 	json_t *obj = json_object();
 	json_object_set(obj, "type", json_string("meta"));
 	json_object_set(obj, key, json_string(value));
 
-	fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
-
-	json_decref(obj);
+    json_array_append(tgt, obj);
 }
 
-static void emit_key_value(FILE *fh, const char *key, const uint64_t value)
+static void emit_key_value(json_t *const tgt, const char *key, const uint64_t value)
 {
 	json_t *obj = json_object();
 	json_object_set(obj, "type", json_string("meta"));
 	json_object_set(obj, key, json_integer(value));
 
-	fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
-
-	json_decref(obj);
+    json_array_append(tgt, obj);
 }
 
 void exit(int status)
@@ -855,40 +821,42 @@ void exit(int status)
 		if (!fh)
 			fh = stderr;
 
+        json_t *arr = json_array();
+
 		char hostname[HOST_NAME_MAX + 1];
 		gethostname(hostname, sizeof hostname);
 
-		emit_key_value(fh, "hostname", hostname);
+		emit_key_value(arr, "hostname", hostname);
 
-		emit_key_value(fh, "start_ts", global_start_ts);
+		emit_key_value(arr, "start_ts", global_start_ts);
 
-		emit_key_value(fh, "end_ts", end_ts);
+		emit_key_value(arr, "end_ts", end_ts);
 
-		emit_key_value(fh, "fork_warning", fork_warning);
+		emit_key_value(arr, "fork_warning", fork_warning);
 
-		emit_key_value(fh, "n_procs", get_nprocs());
+		emit_key_value(arr, "n_procs", get_nprocs());
 
 		pid_t pid = getpid();
-		emit_key_value(fh, "pid", pid);
+		emit_key_value(arr, "pid", pid);
 
 		int s = sched_getscheduler(pid);
 		if (s == SCHED_OTHER)
-			emit_key_value(fh, "scheduler", "sched-other");
+			emit_key_value(arr, "scheduler", "sched-other");
 		else if (s == SCHED_BATCH)
-			emit_key_value(fh, "scheduler", "sched-batch");
+			emit_key_value(arr, "scheduler", "sched-batch");
 		else if (s == SCHED_IDLE)
-			emit_key_value(fh, "scheduler", "sched-idle");
+			emit_key_value(arr, "scheduler", "sched-idle");
 		else if (s == SCHED_FIFO)
-			emit_key_value(fh, "scheduler", "sched-fifo");
+			emit_key_value(arr, "scheduler", "sched-fifo");
 		else if (s == SCHED_RR)
-			emit_key_value(fh, "scheduler", "sched-rr");
+			emit_key_value(arr, "scheduler", "sched-rr");
 		else
-			emit_key_value(fh, "scheduler", "unknown");
+			emit_key_value(arr, "scheduler", "unknown");
 
-		emit_key_value(fh, "mutex_type_normal", PTHREAD_MUTEX_NORMAL);
-		emit_key_value(fh, "mutex_type_recursive", PTHREAD_MUTEX_RECURSIVE);
-		emit_key_value(fh, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
-		emit_key_value(fh, "mutex_type_adaptive", PTHREAD_MUTEX_ADAPTIVE_NP);
+		emit_key_value(arr, "mutex_type_normal", PTHREAD_MUTEX_NORMAL);
+		emit_key_value(arr, "mutex_type_recursive", PTHREAD_MUTEX_RECURSIVE);
+		emit_key_value(arr, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
+		emit_key_value(arr, "mutex_type_adaptive", PTHREAD_MUTEX_ADAPTIVE_NP);
 
 		char exe_name[PATH_MAX] = { 0 };
 		if (readlink("/proc/self/exe", exe_name, sizeof(exe_name) - 1) == -1) {
@@ -897,17 +865,15 @@ void exit(int status)
 			color("\033[0m");
 		}
 
-		emit_key_value(fh, "exe_name", exe_name);
+		emit_key_value(arr, "exe_name", exe_name);
 
-		emit_key_value(fh, "measurements", "measurements.dat");
+		emit_key_value(arr, "measurements", data_filename);
 
-		emit_key_value(fh, "cnt_mutex_trylock", cnt_mutex_trylock);
-		emit_key_value(fh, "cnt_rwlock_try_rdlock", cnt_rwlock_try_rdlock);
-		emit_key_value(fh, "cnt_rwlock_try_timedrdlock", cnt_rwlock_try_timedrdlock);
-		emit_key_value(fh, "cnt_rwlock_try_wrlock", cnt_rwlock_try_wrlock);
-		emit_key_value(fh, "cnt_rwlock_try_timedwrlock", cnt_rwlock_try_timedwrlock);
-
-		char caller_str[512];
+		emit_key_value(arr, "cnt_mutex_trylock", cnt_mutex_trylock);
+		emit_key_value(arr, "cnt_rwlock_try_rdlock", cnt_rwlock_try_rdlock);
+		emit_key_value(arr, "cnt_rwlock_try_timedrdlock", cnt_rwlock_try_timedrdlock);
+		emit_key_value(arr, "cnt_rwlock_try_wrlock", cnt_rwlock_try_wrlock);
+		emit_key_value(arr, "cnt_rwlock_try_timedwrlock", cnt_rwlock_try_timedwrlock);
 
 		// Copy, in case a thread is still running and adding new records: a for-loop
 		// on 'items_idx' might run longer than intended and even emit garbage.
@@ -916,13 +882,11 @@ void exit(int status)
 		if (n_rec_inserted > n_records)
 			n_rec_inserted = n_records;
 
-		emit_key_value(fh, "n_records", n_rec_inserted);
-		emit_key_value(fh, "n_records_max", n_records);
+		emit_key_value(arr, "n_records", n_rec_inserted);
+		emit_key_value(arr, "n_records_max", n_records);
 
-		json_t *m_obj = json_object();
-		json_object_set(m_obj, "type", json_string("marker"));
-		fprintf(fh, "%s\n", json_dumps(m_obj, JSON_COMPACT));
-		json_decref(m_obj);
+		fprintf(fh, "%s\n", json_dumps(arr, JSON_COMPACT));
+		json_decref(arr);
 
 		if (fh != stderr) {
 			fclose(fh);

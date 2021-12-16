@@ -22,6 +22,10 @@ add_executable(test
 	test.c
 	)
 
+add_executable(dat_to_json
+    dat_to_json.cpp
+    )
+
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
 find_package(Threads)
@@ -35,6 +39,10 @@ pkg_check_modules(JANSSON REQUIRED jansson)
 target_link_libraries(lock_tracer ${JANSSON_LIBRARIES})
 target_include_directories(lock_tracer PUBLIC ${JANSSON_INCLUDE_DIRS})
 target_compile_options(lock_tracer PUBLIC ${JANSSON_CFLAGS_OTHER})
+
+target_link_libraries(dat_to_json ${JANSSON_LIBRARIES})
+target_include_directories(dat_to_json PUBLIC ${JANSSON_INCLUDE_DIRS})
+target_compile_options(dat_to_json PUBLIC ${JANSSON_CFLAGS_OTHER})
 
 target_link_libraries(lock_tracer -ldl)
 target_link_libraries(lock_tracer -rdynamic)
