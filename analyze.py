@@ -334,8 +334,6 @@ for j in js:
         scheduler = j['scheduler']
 
     elif j['type'] == 'data' and j['action'] == 'lock':
-        resolve_addresses(core_file, j['caller'])
-
         lock_hex = '%x' % j['lock']
 
         if len(current_lock_stack) < max_lock_stack_depth:
@@ -413,8 +411,6 @@ for j in js:
                 del current_lock_stack[i]
                 break
 
-        resolve_addresses(core_file, j['caller'])
-
         if not j['lock'] in used_in_tid:
             used_in_tid[j['lock']] = set()
 
@@ -474,10 +470,8 @@ for j in js:
         else:
             lock_stack_depth_too_large = True
 
+        # which caller was the last one to invoke readlock on this rw-lock
         last_used_by[lock_hex] = resolve_addresses(core_file, j['caller'])
-
-        if not j['lock'] in rw_state:
-            rw_state[j['lock']] = set()
 
         if not j['lock'] in rw_l_durations:
             rw_l_durations[j['lock']] = dict()
@@ -499,8 +493,12 @@ for j in js:
             else:
                 rw_contended[j['lock']] = 1
 
+        # see if a lock was double locked by the same thread
+        if not j['lock'] in rw_state:
+            rw_state[j['lock']] = set()
+
         if j['tid'] in rw_state[j['lock']]:
-            print('<h3>Double r/w-lock read lock</h3>', file=fh_out)
+            print('<h3>Double r/w-lock read lock by same thread</h3>', file=fh_out)
             print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name']), file=fh_out)
             dump_stacktrace(resolve_addresses(core_file, j['caller']))
 
@@ -587,7 +585,7 @@ for j in js:
             rw_state[j['lock']].remove(j['tid'])
 
         else:
-            print('<h3>Invalid r/w-lock unlock</h3>', file=fh_out)
+            print('<h3>Invalid r/w-lock unlock (not in list)</h3>', file=fh_out)
             print('<p>index: %s, mutex: %016x, tid: %s, thread name: %s</p>' % (j['t'], j['lock'], j['tid'], j['thread_name']), file=fh_out)
             dump_stacktrace(resolve_addresses(core_file, j['caller']))
 
@@ -633,6 +631,16 @@ for j in js:
     elif j['type'] == 'data' and j['action'] == 'error':  # errors
         errors.append(j)
 
+    elif j['type'] == 'data' and (j['action'] == 'init' or j['action'] == 'destroy'):
+        if j['lock'] in locked and locked[j['lock']] > 0:
+            j['error_descr'] = '%s mutex while in use' % j['action']
+            errors.append(j)
+
+    elif j['type'] == 'data' and (j['action'] == 'rw_init' or j['action'] == 'rw_destroy'):
+        if j['lock'] in locked and locked[j['lock']] > 0:
+            j['error_descr'] = '%s rwlock while in use' % j['action'][3:]
+            errors.append(j)
+
     elif j['type'] == 'end':  # errors
         pass
 
@@ -668,7 +676,11 @@ any_dl = False
 
 for d in range(0, len(errors)):
     print(pp_record(errors[d], end_ts, True), file=fh_out)
-    print('<br>error description: %s (%d)' % (os.strerror(errors[d]['rc']), errors[d]['rc']), file=fh_out)
+    if errors[d]['rc'] > 0:
+        print('<br>error description: %s (%d)' % (os.strerror(errors[d]['rc']), errors[d]['rc']), file=fh_out)
+
+    else:
+        print('<br>error description: %s' % errors[d]['error_descr'], file=fh_out)
 
     print('<br>', file=fh_out)
 

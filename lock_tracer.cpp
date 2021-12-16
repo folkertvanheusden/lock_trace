@@ -72,7 +72,7 @@ static uint64_t get_ns()
 
 uint64_t global_start_ts = get_ns();
 
-typedef enum { a_lock, a_unlock, a_thread_clean, a_error, a_r_lock, a_w_lock, a_rw_unlock } lock_action_t;
+typedef enum { a_lock, a_unlock, a_thread_clean, a_error, a_r_lock, a_w_lock, a_rw_unlock, a_init, a_destroy, a_rw_init, a_rw_destroy } lock_action_t;
 
 typedef struct {
 #ifdef WITH_BACKTRACE
@@ -129,6 +129,12 @@ org_pthread_mutex_trylock org_pthread_mutex_trylock_h = nullptr;
 typedef int (* org_pthread_mutex_unlock)(pthread_mutex_t *mutex);
 org_pthread_mutex_unlock org_pthread_mutex_unlock_h = nullptr;
 
+typedef int (* org_pthread_mutex_init)(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr);
+org_pthread_mutex_init org_pthread_mutex_init_h = nullptr;
+
+typedef int (* org_pthread_mutex_destroy)(pthread_mutex_t *mutex);
+org_pthread_mutex_destroy org_pthread_mutex_destroy_h = nullptr;
+
 typedef int (* org_pthread_exit)(void *retval);
 org_pthread_exit org_pthread_exit_h = nullptr;
 
@@ -158,6 +164,12 @@ org_pthread_rwlock_timedwrlock org_pthread_rwlock_timedwrlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_unlock)(pthread_rwlock_t *rwlock);
 org_pthread_rwlock_unlock org_pthread_rwlock_unlock_h = nullptr;
+
+typedef int (* org_pthread_rwlock_destroy)(pthread_rwlock_t *rwlock);
+org_pthread_rwlock_destroy org_pthread_rwlock_destroy_h = nullptr;
+
+typedef int (* org_pthread_rwlock_init)(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr);
+org_pthread_rwlock_init org_pthread_rwlock_init_h = nullptr;
 
 std::map<int, std::string> *tid_names = nullptr;
 pthread_rwlock_t tid_names_lock = PTHREAD_RWLOCK_INITIALIZER;
@@ -379,6 +391,28 @@ void rwlock_sanity_check(pthread_rwlock_t *const rwlock, void *const caller)
 #endif
 }
 
+int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
+{
+	if (unlikely(!org_pthread_mutex_init_h))
+		org_pthread_mutex_init_h = (org_pthread_mutex_init)dlsym(RTLD_NEXT, "pthread_mutex_init");
+
+    int rc = (*org_pthread_mutex_init_h)(mutex, attr);
+	STORE_MUTEX_INFO(mutex, a_init, 0, rc);
+
+    return rc;
+}
+
+int pthread_mutex_destroy(pthread_mutex_t *mutex)
+{
+	if (unlikely(!org_pthread_mutex_destroy_h))
+		org_pthread_mutex_destroy_h = (org_pthread_mutex_destroy)dlsym(RTLD_NEXT, "pthread_mutex_destroy");
+
+    int rc = (*org_pthread_mutex_destroy_h)(mutex);
+	STORE_MUTEX_INFO(mutex, a_destroy, 0, rc);
+
+    return rc;
+}
+
 int pthread_mutex_trylock(pthread_mutex_t *mutex)
 {
 	if (unlikely(!org_pthread_mutex_trylock_h))
@@ -477,6 +511,27 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 #define STORE_RWLOCK_INFO(a, b, c, d) store_rwlock_info(a, b, c, d, nullptr) 
 #endif
 
+int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr)
+{
+	if (unlikely(!org_pthread_rwlock_init_h))
+		org_pthread_rwlock_init_h = (org_pthread_rwlock_init)dlsym(RTLD_NEXT, "pthread_rwlock_init");
+
+    int rc = (*org_pthread_rwlock_init_h)(rwlock, attr);
+	STORE_RWLOCK_INFO(rwlock, a_rw_init, 0, rc);
+
+    return rc;
+}
+
+int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
+{
+	if (unlikely(!org_pthread_rwlock_destroy_h))
+		org_pthread_rwlock_destroy_h = (org_pthread_rwlock_destroy)dlsym(RTLD_NEXT, "pthread_rwlock_destroy");
+
+    int rc = (*org_pthread_rwlock_destroy_h)(rwlock);
+	STORE_RWLOCK_INFO(rwlock, a_rw_destroy, 0, rc);
+
+    return rc;
+}
 
 int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 {
@@ -828,6 +883,14 @@ void exit(int status)
 				action_name = "writelock", rw_lock = true;
 			else if (items[i].la == a_rw_unlock)
 				action_name = "rwunlock", rw_lock = true;
+			else if (items[i].la == a_init)
+				action_name = "init";
+			else if (items[i].la == a_destroy)
+				action_name = "destroy";
+			else if (items[i].la == a_rw_init)
+				action_name = "rw_init";
+			else if (items[i].la == a_rw_destroy)
+				action_name = "rw_destroy";
 
 			json_t *obj = json_object();
 
@@ -873,8 +936,6 @@ void exit(int status)
 		}
 	}
 
-	fflush(nullptr);
-
 	// make sure no entries are added by threads that are
 	// still running; next statement unallocates the mmap()ed
 	// memory
@@ -885,6 +946,12 @@ void exit(int status)
     munmap(items, length);
 
     // dump core
+	color("\033[0;31m");
+	fprintf(stderr, "Dumping core...\n");
+	color("\033[0m");
+
+	fflush(nullptr);
+
     signal(SIGABRT, SIG_DFL);
     abort();
 }
