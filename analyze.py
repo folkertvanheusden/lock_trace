@@ -30,13 +30,16 @@ lock_stack_depth_too_large = False
 billion = 1000000000
 
 def help():
-    print('-c --core      path to the core file')
-    print('-t --trace     path to the trace file')
-    print('-r --resolver  path to the symbol resolver (\'eu-addr2line\')')
-    print('-f             file to write report to, skip for stdout')
+    print('-c --core         path to the core file')
+    print('-t --trace        path to the trace file')
+    print('-r --resolver     path to the symbol resolver (\'eu-addr2line\')')
+    print('-f                file to write report to, skip for stdout')
+    print('-s --lock-stacks  include lock stacks in report')
+
+include_lock_stacks = False
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "c:t:r:bf:", ["core=", "trace=", "resolver=", "human-backtrace", "file="])
+    opts, args = getopt.getopt(sys.argv[1:], "c:t:r:f:s", ["core=", "trace=", "resolver=", "file=", "lock-stacks"])
 except getopt.GetoptError as err:
     print(err)
     help()
@@ -54,6 +57,9 @@ for o, a in opts:
 
     elif o in ("-f", "--file"):
         fh_out = open(a, 'w')
+
+    elif o in ("-s", "--lock-stacks"):
+        include_lock_stacks = True
 
     else:
         print('Invalid command line parameter: %s %s' % (o, a))
@@ -339,12 +345,13 @@ for j in js:
     elif j['type'] == 'data' and j['action'] == 'lock':
         lock_hex = '%x' % j['lock']
 
-        if len(current_lock_stack) < max_lock_stack_depth:
-            current_lock_stack.append(lock_hex)
-            register_lock_stack(current_lock_stack)
+        if include_lock_stacks:
+            if len(current_lock_stack) < max_lock_stack_depth:
+                current_lock_stack.append(lock_hex)
+                register_lock_stack(current_lock_stack)
 
-        else:
-            lock_stack_depth_too_large = True
+            else:
+                lock_stack_depth_too_large = True
 
         last_used_by[lock_hex] = resolve_addresses(core_file, j['caller'])
 
@@ -468,7 +475,9 @@ for j in js:
 
         if len(current_lock_stack) < max_lock_stack_depth:
             current_lock_stack.append(lock_hex)
-            register_lock_stack(current_lock_stack)
+
+            if include_lock_stacks:
+                register_lock_stack(current_lock_stack)
 
         else:
             lock_stack_depth_too_large = True
@@ -529,7 +538,9 @@ for j in js:
 
         if len(current_lock_stack) < max_lock_stack_depth:
             current_lock_stack.append(lock_hex)
-            register_lock_stack(current_lock_stack)
+
+            if include_lock_stacks:
+                register_lock_stack(current_lock_stack)
 
         else:
             lock_stack_depth_too_large = True
@@ -857,30 +868,31 @@ print('<h3>R/W LOCKS</h3>', file=fh_out)
 
 emit_durations(fh_out, rw_durations, rw_l_durations, rw_contended)
 
-print('<h2 id="lockstacks">LOCK STACKS</h2>', file=fh_out)
+if include_lock_stacks:
+    print('<h2 id="lockstacks">LOCK STACKS</h2>', file=fh_out)
 
-if lock_stack_depth_too_large:
-    print('<p><b>NOTE:</b> one or more stack trace depths were too large; results may be unusable</p>', file=fh_out)
+    if lock_stack_depth_too_large:
+        print('<p><b>NOTE:</b> one or more stack trace depths were too large; results may be unusable</p>', file=fh_out)
 
-print('<table><tr><th>count</th><th>stack (right most is most recent)</th></tr>', file=fh_out)
+    print('<table><tr><th>count</th><th>stack (right most is most recent)</th></tr>', file=fh_out)
 
-sorted_stacks = dict(sorted(lock_stacks.items(), key=lambda item: item[1], reverse=True))
-for k in sorted_stacks:
-    stack = k.split('|')
+    sorted_stacks = dict(sorted(lock_stacks.items(), key=lambda item: item[1], reverse=True))
+    for k in sorted_stacks:
+        stack = k.split('|')
 
-    out = None
-    for lock in stack:
-        if out is None:
-            out = ''
+        out = None
+        for lock in stack:
+            if out is None:
+                out = ''
 
-        else:
-            out += " "
+            else:
+                out += " "
 
-        out += '<a href="#lock_info_%s">%s</a>' % (lock, lock)
+            out += '<a href="#lock_info_%s">%s</a>' % (lock, lock)
 
-    print('<tr><td>%d</td><td>%s</td></tr>' % (sorted_stacks[k], out), file=fh_out)
+        print('<tr><td>%d</td><td>%s</td></tr>' % (sorted_stacks[k], out), file=fh_out)
 
-print('</table>', file=fh_out)
+    print('</table>', file=fh_out)
 
 print('<h3>MUTEX TYPE COUNTS</h3>', file=fh_out)
 print('<table><tr><th>type</th><th>count</th></tr>', file=fh_out)
