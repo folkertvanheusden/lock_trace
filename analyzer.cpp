@@ -420,6 +420,70 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 	fprintf(fh, "</article>\n");
 }
 
+std::map<const pthread_rwlock_t *, std::vector<size_t> > do_find_still_locked_rwlock(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	std::map<const pthread_rwlock_t *, int> rwlocks_counts;
+
+	std::map<const pthread_rwlock_t *, std::vector<size_t> > rwlockes_where;
+
+	for(size_t i=0; i<n_records; i++) {
+		const pthread_rwlock_t *const rwlock = (const pthread_rwlock_t *)data[i].lock;
+
+		if (data[i].la == a_r_lock || data[i].la == a_w_lock) {
+			auto it = rwlocks_counts.find(rwlock);
+
+			if (it == rwlocks_counts.end()) {
+				rwlocks_counts.insert({ rwlock, 1 });
+				rwlockes_where.insert({ rwlock, { i } });
+			}
+			else {
+				it->second++;
+				rwlockes_where.find(rwlock)->second.push_back(i);
+			}
+		}
+		else if (data[i].la == a_rw_unlock) {
+			auto it = rwlocks_counts.find(rwlock);
+
+			if (it != rwlocks_counts.end()) {
+				if (it->second > 0)
+					it->second--;
+
+				if (it->second == 0) {
+					rwlocks_counts.erase(rwlock);
+					rwlockes_where.erase(rwlock);
+				}
+			}
+		}
+	}
+
+	return rwlockes_where;
+}
+
+void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto still_locked_list = do_find_still_locked_rwlock(data, n_records);
+
+	fprintf(fh, "<article>\n");
+	fprintf(fh, "<heading><h2 id=\"stillrw\">still locked rwlocks</h2></heading>\n");
+	fprintf(fh, "<p>Count: %zu</p>\n", still_locked_list.size());
+
+	for(auto it : still_locked_list) {
+		fprintf(fh, "<heading><h3>rwlock %p</h3></heading>\n", (const void *)it.first);
+
+        auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
+
+		if (unique_backtraces.size() == 1)
+			fprintf(fh, "<p>The following location did not unlock:</p>\n");
+		else
+			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
+
+        for(auto entry : unique_backtraces) 
+			put_record_details(fh, data[entry.second], "magenta");
+	}
+
+	fprintf(fh, "</article>\n");
+}
+
 // see do_find_double_un_locks_mutex comment about false positives
 auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const size_t n_records)
 {
@@ -540,7 +604,7 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 void put_html_header(FILE *const fh)
 {
 	fprintf(fh, "<!DOCTYPE html>\n<html><head>\n");
-	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
+	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
 	fprintf(fh, "<title>lock trace</title></head><body>\n");
 	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
 
@@ -550,6 +614,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"red\" href=\"#doublem\">double lock/unlock mutexes</a>\n");
 	fprintf(fh, "<li><a class=\"blue\" href=\"#stillm\">still locked mutexes</a>\n");
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
+	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
 	fprintf(fh, "</ul>\n");
 }
 
@@ -609,6 +674,8 @@ int main(int argc, char *argv[])
 	find_still_locked_mutex(fh, data, n_records);
 
 	find_double_un_locks_rwlock(fh, data, n_records);
+
+    find_still_locked_rwlock(fh, data, n_records);
 
 	put_html_tail(fh);
 
