@@ -68,6 +68,7 @@ static void color(const char *str)
 
 static uint64_t get_ns()
 {
+#ifdef MEASURE_TIMING
 	struct timespec tp { 0 };
 
 	if (clock_gettime(USE_CLOCK, &tp) == -1) {
@@ -76,6 +77,9 @@ static uint64_t get_ns()
 	}
 
         return tp.tv_sec * 1000ll * 1000ll * 1000ll + tp.tv_nsec;
+#else
+	return 0;
+#endif
 }
 
 uint64_t global_start_ts = get_ns();
