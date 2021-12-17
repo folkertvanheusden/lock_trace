@@ -10,6 +10,43 @@
 #include "config.h"
 #include "lock_tracer.h"
 
+void write_json_int(FILE *const fh, const char *const key, const uint64_t v, const bool more)
+{
+    fprintf(fh, "\"%s\":%lu%s", key, v, more ? "," : "");
+}
+
+void write_json_string(FILE *const fh, const char *const key, const char *const v, const bool more)
+{
+    size_t n = strlen(v);
+
+    char *out = (char *)malloc(n * 2 + 1);
+    size_t o = 0;
+
+    for(size_t i=0; i<n; i++) {
+        if (v[i] == '\n') {
+            out[o++] = '\\';
+            out[o++] = 'n';
+        }
+        else if (v[i] == '"') {
+            out[o++] = '\\';
+            out[o++] = '"';
+        }
+        else if (v[i] == '\\') {
+            out[o++] = '\\';
+            out[o++] = '\\';
+        }
+        else {
+            out[o++] = v[i];
+        }
+    }
+
+    out[o] = 0x00;
+
+    fprintf(fh, "\"%s\":\"%s\"%s", key, out, more ? "," : "");
+
+    free(out);
+}
+
 int main(int argc, char *argv[])
 {
     json_error_t err;
@@ -48,11 +85,22 @@ int main(int argc, char *argv[])
 
     close(fd);
 
-    json_t *arr = json_array();
+    char *dot = strrchr(data_filename, '.');
+    if (dot)
+        *dot = 0x00;
+
+    char *json_filename = nullptr;
+    asprintf(&json_filename, "%s.json", data_filename);
+
+    FILE *fh = fopen(json_filename, "wb");
+
+    fprintf(fh, "[");
 
     char caller_str[512];
 
     for(uint64_t i = 0; i<n_rec; i++) {
+        fprintf(fh, "{");
+
         caller_str[0] = 0x00;
 
 #ifndef WITH_TIMESTAMP
@@ -90,51 +138,45 @@ int main(int argc, char *argv[])
         else if (items[i].la == a_rw_destroy)
             action_name = "rw_destroy";
 
-        json_t *obj = json_object();
-
         if (items[i].thread_name[0])
-            json_object_set(obj, "thread_name", json_string(items[i].thread_name));
+            write_json_string(fh, "thread_name", items[i].thread_name, true);
         else
-            json_object_set(obj, "thread_name", json_string("?"));
+            write_json_string(fh, "thread_name", "?", true);
 
-        json_object_set(obj, "type", json_string("data"));
-        json_object_set(obj, "t", json_integer(i));
-        json_object_set(obj, "lock", json_integer((long long unsigned int)items[i].lock));
-        json_object_set(obj, "tid", json_integer(items[i].tid));
-        json_object_set(obj, "action", json_string(action_name));
-        json_object_set(obj, "caller", json_string(caller_str));
-        json_object_set(obj, "timestamp", json_integer(items[i].timestamp));
-        json_object_set(obj, "lock_took", json_integer(items[i].lock_took));
-        json_object_set(obj, "rc", json_integer(items[i].rc));
+        write_json_string(fh, "type", "data", true);
+        write_json_int(fh, "t", i, true);
+        write_json_int(fh, "lock", (unsigned long long int)items[i].lock, true);
+        write_json_int(fh, "tid", items[i].tid, true);
+        write_json_string(fh, "action", action_name, true);
+        write_json_string(fh, "caller", caller_str, true);
+        write_json_int(fh, "timestamp", items[i].timestamp, true);
+        write_json_int(fh, "lock_took", items[i].lock_took, true);
+        write_json_int(fh, "rc", items[i].rc, true);
 
         if (rw_lock) {
-            json_object_set(obj, "rwlock_readers", json_integer(items[i].rwlock_innards.__readers));
-            json_object_set(obj, "rwlock_writers", json_integer(items[i].rwlock_innards.__writers));
-            json_object_set(obj, "cur_writer",     json_integer(items[i].rwlock_innards.__cur_writer));
+            write_json_int(fh, "rwlock_readers", items[i].rwlock_innards.__readers, true);
+            write_json_int(fh, "rwlock_writers", items[i].rwlock_innards.__writers, true);
+            write_json_int(fh, "cur_writer",     items[i].rwlock_innards.__cur_writer, false);
         }
         else {
-            json_object_set(obj, "mutex_count", json_integer(items[i].mutex_innards.__count));
-            json_object_set(obj, "mutex_owner", json_integer(items[i].mutex_innards.__owner));
-            json_object_set(obj, "mutex_kind",  json_integer(items[i].mutex_innards.__kind));
+            write_json_int(fh, "mutex_count", items[i].mutex_innards.__count, true);
+            write_json_int(fh, "mutex_owner", items[i].mutex_innards.__owner, true);
+            write_json_int(fh, "mutex_kind",  items[i].mutex_innards.__kind, true);
 #ifdef __x86_64__
-            json_object_set(obj, "mutex_spins",  json_integer(items[i].mutex_innards.__spins));
-            json_object_set(obj, "mutex_elision",  json_integer(items[i].mutex_innards.__elision));
+            write_json_int(fh, "mutex_spins",  items[i].mutex_innards.__spins, true);
+            write_json_int(fh, "mutex_elision",  items[i].mutex_innards.__elision, false);
 #endif
         }
 
-        json_array_append(arr, obj);
+        if (i < n_rec - 1)
+            fprintf(fh, "},");
+        else
+            fprintf(fh, "}");
     }
 
-    char *dot = strrchr(data_filename, '.');
-    if (dot)
-        *dot = 0x00;
+    fprintf(fh, "]");
 
-    char *json_filename = nullptr;
-    asprintf(&json_filename, "%s.json", data_filename);
-
-    json_dump_file(arr, json_filename, JSON_COMPACT);
-
-    json_decref(arr);
+    fclose(fh);
 
     printf("Output written to %s\n", json_filename);
 
