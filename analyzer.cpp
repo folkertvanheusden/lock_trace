@@ -258,7 +258,11 @@ void put_call_trace(FILE *const fh, const lock_trace_item_t & record, const std:
 {
 	fprintf(fh, "<table class=\"%s\">\n", table_color.c_str());
 
-	for(int i=0; i<CALLER_DEPTH; i++)
+	int d = CALLER_DEPTH - 1;
+	while(d > 0 && record.caller[d] == nullptr)
+		d--;
+
+	for(int i=0; i<=d; i++)
 		fprintf(fh, "<tr><td>%p</td><td>%s</td></tr>\n", record.caller[i], lookup_symbol(record.caller[i]).c_str());
 
 	fprintf(fh, "</table>\n");
