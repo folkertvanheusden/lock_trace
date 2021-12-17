@@ -232,7 +232,7 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
-#ifdef PREVENT_RECURSION
+#if defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)
             items[cur_idx].caller[0] = shallow_backtrace;
 #else
 			backtrace(items[cur_idx].caller, CALLER_DEPTH);
@@ -273,7 +273,7 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 	}
 }
 
-#if defined(PREVENT_RECURSION) && defined(WITH_BACKTRACE)
+#if (defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)) && defined(WITH_BACKTRACE)
 #define STORE_MUTEX_INFO(a, b, c, d) store_mutex_info(a, b, c, d, __builtin_return_address(0))
 #else
 #define STORE_MUTEX_INFO(a, b, c, d) store_mutex_info(a, b, c, d, nullptr) 
@@ -465,7 +465,7 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
-#ifdef PREVENT_RECURSION
+#if defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)
             items[cur_idx].caller[0] = shallow_backtrace;
 #else
 			backtrace(items[cur_idx].caller, CALLER_DEPTH);
@@ -509,7 +509,7 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 	}
 }
 
-#if defined(PREVENT_RECURSION) && defined(WITH_BACKTRACE)
+#if (defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)) && defined(WITH_BACKTRACE)
 #define STORE_RWLOCK_INFO(a, b, c, d) store_rwlock_info(a, b, c, d, __builtin_return_address(0))
 #else
 #define STORE_RWLOCK_INFO(a, b, c, d) store_rwlock_info(a, b, c, d, nullptr) 

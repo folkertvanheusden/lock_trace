@@ -88,7 +88,8 @@ notes
 
 * You may want to look at the defines in 'config.h' to enable- or
   disable certain functionality of lock_tracer. Disabling e.g.
-  timing measurements makes it faster.
+  timing measurements makes it faster. Also using
+  'SHALLOW_BACKTRACE' helps for speed.
 
 * If your program suddenly hangs where it did not before, then
   this may be caused by the version of 'backtrace' in libgcc
