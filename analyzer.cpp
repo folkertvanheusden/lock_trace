@@ -76,28 +76,52 @@ const lock_trace_item_t *load_data(const std::string & filename)
 	return data;
 }
 
+typedef intptr_t hash_t;
+
+// FIXME improve hashing
+hash_t calculate_callback_hash(const void *const *const pointers, const size_t n_pointers)
+{
+	hash_t p = 0;
+
+	for(size_t i=0; i<n_pointers; i++)
+		p ^= reinterpret_cast<intptr_t>(pointers[i]);
+
+	return (hash_t)p;
+}
+
 // lae_already_locked: already locked by this tid
 // lae_not_locked: unlock without lock
 // lae_not_owner: other thread unlocks mutex
 typedef enum { lae_already_locked = 0, lae_not_locked, lae_not_owner } lock_action_error_t;
 constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner" };
 
-void put_mutex_lock_error(std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<size_t> > *const target, const pthread_mutex_t *const mutex, const lock_action_error_t error_type, const size_t record_nr)
+template<typename Type>
+void put_lock_error(std::map<std::pair<const Type *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > *const target, const Type *const lock, const lock_action_error_t error_type, const hash_t calltrace_hash, const size_t record_nr)
 {
-	std::pair<const pthread_mutex_t *, lock_action_error_t> key { mutex, error_type };
+	std::pair<const Type *, lock_action_error_t> key { lock, error_type };
 	auto it = target->find(key);
 
-	if (it == target->end())
-		target->insert({ key, { record_nr } });
-	else
-		it->second.push_back(record_nr);
+	if (it == target->end()) {
+		std::map<hash_t, std::pair<size_t, int> > entry;
+		entry.insert({ calltrace_hash, std::pair<size_t, int>(record_nr, 1) });
+
+		target->insert({ key, entry });
+	}
+	else {
+		auto hash_map_it = it->second.find(calltrace_hash);
+
+		if (hash_map_it == it->second.end())
+			it->second.insert({ calltrace_hash, std::pair<size_t, int>(record_nr, 1) });
+		else
+			hash_map_it->second.second++;
+	}
 }
 
 // this may give false positives if for example an other mutex is malloced()/new'd
 // over the location of a previously unlocked mutex
-std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<size_t> > do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const size_t n_records)
+auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const size_t n_records)
 {
-	std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<size_t> > out;
+	std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > out;
 
 	std::map<const pthread_mutex_t *, std::set<pid_t> > locked;
 
@@ -109,8 +133,11 @@ std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<si
 			// see if it is already locked by current 'tid' which is a mistake
 			auto it = locked.find(mutex);
 			if (it != locked.end()) {
-				if (it->second.find(tid) != it->second.end())
-					put_mutex_lock_error(&out, mutex, lae_already_locked, i);
+				if (it->second.find(tid) != it->second.end()) {
+					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+
+					put_lock_error(&out, mutex, lae_already_locked, hash, i);
+				}
 				else {
 					// new locker of this mutex
 					it->second.insert(tid);
@@ -124,13 +151,19 @@ std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<si
 		else if (data[i].la == a_unlock) {
 			// see if it is not locked (mistake)
 			auto it = locked.find(mutex);
-			if (it == locked.end())
-				put_mutex_lock_error(&out, mutex, lae_not_locked, i);
+			if (it == locked.end()) {
+				hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+
+				put_lock_error(&out, mutex, lae_not_locked, hash, i);
+			}
 			// see if it is not locked by current tid (mistake)
 			else {
 				auto tid_it = it->second.find(tid);
-				if (tid_it == it->second.end())
-					put_mutex_lock_error(&out, mutex, lae_not_owner, i);
+				if (tid_it == it->second.end()) {
+					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+
+					put_lock_error(&out, mutex, lae_not_owner, hash, i);
+				}
 
 				it->second.erase(tid_it);
 
@@ -221,8 +254,11 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
 		fprintf(fh, "<heading><h3>mutex %p, type \"%s\"</h3></heading>\n", (const void *)mutex_lock_mistake.first.first, lock_action_error_str[mutex_lock_mistake.first.second]);
 
-		for(auto idx : mutex_lock_mistake.second)
-			put_record_details(fh, data[idx]);
+		for(auto map_entry : mutex_lock_mistake.second) {
+			fprintf(fh, "<p>Error count by this caller: %d</p>\n", map_entry.second.second);
+
+			put_record_details(fh, data[map_entry.second.first]);
+		}
 	}
 
 	fprintf(fh, "</article>\n");
@@ -326,43 +362,8 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 	fprintf(fh, "</article>\n");
 }
 
-typedef intptr_t hash_t;
-
-// FIXME improve hashing
-hash_t calculate_callback_hash(const void *const *const pointers, const size_t n_pointers)
-{
-	hash_t p = 0;
-
-	for(size_t i=0; i<n_pointers; i++)
-		p ^= reinterpret_cast<intptr_t>(pointers[i]);
-
-	return (hash_t)p;
-}
-
-// TODO: put_rwlock_error / put_mutex_lock_error: make into a generic function
-void put_rwlock_error(std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > *const target, const pthread_rwlock_t *const mutex, const lock_action_error_t error_type, const hash_t calltrace_hash, const size_t record_nr)
-{
-	std::pair<const pthread_rwlock_t *, lock_action_error_t> key { mutex, error_type };
-	auto it = target->find(key);
-
-	if (it == target->end()) {
-		std::map<hash_t, std::pair<size_t, int> > entry;
-		entry.insert({ calltrace_hash, std::pair<size_t, int>(record_nr, 1) });
-
-		target->insert({ key, entry });
-	}
-	else {
-		auto hash_map_it = it->second.find(calltrace_hash);
-
-		if (hash_map_it == it->second.end())
-			it->second.insert({ calltrace_hash, std::pair<size_t, int>(record_nr, 1) });
-		else
-			hash_map_it->second.second++;
-	}
-}
-
 // see do_find_double_un_locks_mutex comment about false positives
-std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const size_t n_records)
+auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const size_t n_records)
 {
 	std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > out;
 
@@ -380,7 +381,7 @@ std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash
 				if (it->second.find(tid) != it->second.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
-					put_rwlock_error(&out, rwlock, lae_already_locked, hash, i);
+					put_lock_error(&out, rwlock, lae_already_locked, hash, i);
 				}
 				else {
 					// new locker of this rwlock
@@ -398,7 +399,7 @@ std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash
 				if (it->second.find(tid) != it->second.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
-					put_rwlock_error(&out, rwlock, lae_already_locked, hash, i);
+					put_lock_error(&out, rwlock, lae_already_locked, hash, i);
 				}
 				else {
 					it->second.insert(tid);
@@ -418,7 +419,7 @@ std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash
 				if (it == r_locked.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
-					put_rwlock_error(&out, rwlock, lae_not_locked, hash, i);
+					put_lock_error(&out, rwlock, lae_not_locked, hash, i);
 				}
 				// see if it is not locked by current tid (mistake)
 				else {
@@ -426,7 +427,7 @@ std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash
 					if (tid_it == it->second.end()) {
 						hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
-						put_rwlock_error(&out, rwlock, lae_not_owner, hash, i);
+						put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 					}
 
 					it->second.erase(tid_it);
@@ -441,7 +442,7 @@ std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash
 				if (tid_it == it->second.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
-					put_rwlock_error(&out, rwlock, lae_not_owner, hash, i);
+					put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 				}
 
 				it->second.erase(tid_it);
