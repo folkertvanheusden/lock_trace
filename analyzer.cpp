@@ -76,17 +76,53 @@ const lock_trace_item_t *load_data(const std::string & filename)
 	return data;
 }
 
-typedef intptr_t hash_t;
+typedef uint64_t hash_t;
 
-// FIXME improve hashing
+uint64_t MurmurHash64A(const void *const key, const int len, const uint64_t seed)
+{
+	const uint64_t m = 0xc6a4a7935bd1e995LLU;
+	const int r = 47;
+
+	uint64_t h = seed ^ (len * m);
+
+	const uint64_t *data = (const uint64_t *)key;
+	const uint64_t *end = (len >> 3) + data;
+
+	while(data != end) {
+		uint64_t k = *data++;
+
+		k *= m;
+		k ^= k >> r;
+		k *= m;
+
+		h ^= k;
+		h *= m;
+	}
+
+	const uint8_t *data2 = (const uint8_t *)data;
+
+	switch(len & 7) {
+		case 7: h ^= (uint64_t)(data2[6]) << 48;
+		case 6: h ^= (uint64_t)(data2[5]) << 40;
+		case 5: h ^= (uint64_t)(data2[4]) << 32;
+		case 4: h ^= (uint64_t)(data2[3]) << 24;
+		case 3: h ^= (uint64_t)(data2[2]) << 16;
+		case 2: h ^= (uint64_t)(data2[1]) << 8;
+		case 1: h ^= (uint64_t)(data2[0]);
+			h *= m;
+	};
+
+	h ^= h >> r;
+	h *= m;
+	h ^= h >> r;
+
+	return h;
+}
+
 hash_t calculate_callback_hash(const void *const *const pointers, const size_t n_pointers)
 {
-	hash_t p = 0;
-
-	for(size_t i=0; i<n_pointers; i++)
-		p ^= reinterpret_cast<intptr_t>(pointers[i]);
-
-	return (hash_t)p;
+	// hash the contents of the pointer-array instead of where they point to
+	return MurmurHash64A((const void *const)pointers, n_pointers * sizeof(void *), 0);
 }
 
 // lae_already_locked: already locked by this tid
