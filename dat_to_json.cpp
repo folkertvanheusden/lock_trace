@@ -103,10 +103,6 @@ int main(int argc, char *argv[])
 
         caller_str[0] = 0x00;
 
-#ifndef WITH_TIMESTAMP
-        items[i].timestamp = 0;
-#endif
-
 #ifdef WITH_BACKTRACE
 	int d = CALLER_DEPTH - 1;
 	while(d >= 0 && !items[i].caller[d])
@@ -152,8 +148,13 @@ int main(int argc, char *argv[])
         write_json_int(fh, "tid", items[i].tid, true);
         write_json_string(fh, "action", action_name, true);
         write_json_string(fh, "caller", caller_str, true);
+#ifdef MEASURE_TIMING
         write_json_int(fh, "timestamp", items[i].timestamp, true);
         write_json_int(fh, "lock_took", items[i].lock_took, true);
+#else
+        write_json_int(fh, "timestamp", 0, true);
+        write_json_int(fh, "lock_took", 0, true);
+#endif
         write_json_int(fh, "rc", items[i].rc, true);
 
         if (rw_lock) {

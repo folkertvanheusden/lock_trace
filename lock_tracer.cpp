@@ -241,8 +241,9 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 		items[cur_idx].lock = mutex;
 		items[cur_idx].tid = _gettid();
 		items[cur_idx].la = la;
-#ifdef WITH_TIMESTAMP
+#ifdef MEASURE_TIMING
 		items[cur_idx].timestamp = get_ns();
+		items[cur_idx].lock_took = took;
 #endif
 
 #ifdef STORE_THREAD_NAME
@@ -264,8 +265,6 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 		items[cur_idx].mutex_innards.__spins   = mutex->__data.__spins;
 		items[cur_idx].mutex_innards.__elision = mutex->__data.__elision;
 #endif
-
-		items[cur_idx].lock_took = took;
 
 		items[cur_idx].rc = rc;
 	}
@@ -475,8 +474,9 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 		items[cur_idx].lock = rwlock;
 		items[cur_idx].tid = _gettid();
 		items[cur_idx].la = la;
-#ifdef WITH_TIMESTAMP
+#ifdef MEASURE_TIMING
 		items[cur_idx].timestamp = get_ns();
+		items[cur_idx].lock_took = took;
 #endif
 #ifdef STORE_THREAD_NAME
 		check_tid_names_lock_functions();
@@ -501,8 +501,6 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 #else
 		items[cur_idx].rwlock_innards.__cur_writer  = 0;
 #endif
-
-		items[cur_idx].lock_took = took;
 
 		items[cur_idx].rc = rc;
 	}

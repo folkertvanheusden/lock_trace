@@ -205,7 +205,7 @@ def emit_header():
     print('<tr><td>core file:</td><td>%s</td></tr>' % core_file, file=fh_out)
     print('<tr><td>trace file:</td><td>%s</td></tr>' % trace_file, file=fh_out)
     took = (end_ts - start_ts) / billion
-    n_per_sec = n_records / took
+    n_per_sec = n_records / took if took > 0 else 0
     print('<tr><td># trace records:</td><td>%s (%.2f%%, %.2f%%/s)</td></tr>' % (n_records, n_records * 100.0 / n_records_max, n_per_sec * 100.0 / n_records_max), file=fh_out)
     print('<tr><td>fork warning:</td><td>%s</td></tr>' % fork_warning, file=fh_out)
     print('<tr><td># cores:</td><td>%s</td></tr>' % n_procs, file=fh_out)
