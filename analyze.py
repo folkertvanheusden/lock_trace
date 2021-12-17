@@ -786,7 +786,10 @@ def emit_durations(fh_out, durations, l_durations, contended):
     for d in durations:
         n = durations[d]['n']
         avg = durations[d]['sum_took'] / n
-        sd = math.sqrt((durations[d]['sd_sum_took'] / n) - math.pow(avg, 2.0))
+        try:
+            sd = math.sqrt((durations[d]['sd_sum_took'] / n) - math.pow(avg, 2.0))
+        except ValueError as ve:
+            sd = -1.0
 
         print('<h4 id="lock_info_%x">lock: %016x</h4>' % (d, d), file=fh_out)
 
