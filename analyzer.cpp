@@ -253,9 +253,9 @@ std::string lookup_symbol(const void *const p)
 }
 
 #if defined(WITH_BACKTRACE)
-void put_call_trace(FILE *const fh, const lock_trace_item_t & record)
+void put_call_trace(FILE *const fh, const lock_trace_item_t & record, const std::string & table_color)
 {
-	fprintf(fh, "<table>\n");
+	fprintf(fh, "<table class=\"%s\">\n", table_color.c_str());
 
 	for(int i=0; i<CALLER_DEPTH; i++)
 		fprintf(fh, "<tr><td>%p</td><td>%s</td></tr>\n", record.caller[i], lookup_symbol(record.caller[i]).c_str());
@@ -264,15 +264,15 @@ void put_call_trace(FILE *const fh, const lock_trace_item_t & record)
 }
 #endif
 
-void put_record_details(FILE *const fh, const lock_trace_item_t & record)
+void put_record_details(FILE *const fh, const lock_trace_item_t & record, const std::string & base_color)
 {
-	fprintf(fh, "<table>\n");
+	fprintf(fh, "<table class=\"%s\">\n", base_color.c_str());
 	fprintf(fh, "<tr><td>tid:</td><td>%d</td></tr>\n", record.tid);
 	fprintf(fh, "<tr><td>thread name:</td><td>%s</td></tr>\n", record.thread_name);
 
 #if defined(WITH_BACKTRACE)
 	fprintf(fh, "<tr><td>call trace:</td><td>");
-	put_call_trace(fh, record);
+	put_call_trace(fh, record, base_color);
 	fprintf(fh, "</td></tr>\n");
 #endif
 
@@ -293,7 +293,7 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 		for(auto map_entry : mutex_lock_mistake.second) {
 			fprintf(fh, "<p>Error count by this caller: %d</p>\n", map_entry.second.second);
 
-			put_record_details(fh, data[map_entry.second.first]);
+			put_record_details(fh, data[map_entry.second.first], "red");
 		}
 	}
 
@@ -330,7 +330,7 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 		fprintf(fh, "<heading><h3>%s</h3></heading>\n", strerror(it.first));
 
 		for(auto idx : it.second)
-			put_record_details(fh, data[idx]);
+			put_record_details(fh, data[idx], "green");
 	}
 
 	fprintf(fh, "</article>\n");
@@ -392,7 +392,7 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
 		for(auto idx : it.second)
-			put_record_details(fh, data[idx]);
+			put_record_details(fh, data[idx], "blue");
 	}
 
 	fprintf(fh, "</article>\n");
@@ -506,7 +506,7 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 		for(auto map_entry : rwlock_lock_mistake.second) {
 			fprintf(fh, "<p>Error count by this caller: %d</p>\n", map_entry.second.second);
 
-			put_record_details(fh, data[map_entry.second.first]);
+			put_record_details(fh, data[map_entry.second.first], "yellow");
 		}
 	}
 
@@ -516,16 +516,16 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 void put_html_header(FILE *const fh)
 {
 	fprintf(fh, "<!DOCTYPE html>\n<html><head>\n");
-	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
+	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
 	fprintf(fh, "<title>lock trace</title></head><body>\n");
 	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
 
 	fprintf(fh, "<h2>table of contents</h2>\n");
 	fprintf(fh, "<ul>\n");
-	fprintf(fh, "<li><a href=\"#errors\">errors</a>\n");
-	fprintf(fh, "<li><a href=\"#doublem\">double lock/unlock mutexes</a>\n");
-	fprintf(fh, "<li><a href=\"#stillm\">still locked mutexes</a>\n");
-	fprintf(fh, "<li><a href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
+	fprintf(fh, "<li><a class=\"green\" href=\"#errors\">errors</a>\n");
+	fprintf(fh, "<li><a class=\"red\" href=\"#doublem\">double lock/unlock mutexes</a>\n");
+	fprintf(fh, "<li><a class=\"blue\" href=\"#stillm\">still locked mutexes</a>\n");
+	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "</ul>\n");
 }
 
