@@ -560,7 +560,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	const json_t *const meta = load_json(trace_file);
+	json_t *const meta = load_json(trace_file);
 	if (!meta)
 		return 1;
 
@@ -589,4 +589,8 @@ int main(int argc, char *argv[])
 	put_html_tail(fh);
 
 	fclose(fh);
+
+	json_decref(meta);
+
+	return 0;
 }
