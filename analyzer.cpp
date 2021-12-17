@@ -445,7 +445,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 				w_locked.insert({ rwlock, { tid } });
 			}
 		}
-		else if (data[i].la == a_unlock) {
+		else if (data[i].la == a_rw_unlock) {
 			// see if it is not locked (mistake)
 			auto it = w_locked.find(rwlock);
 			if (it == w_locked.end()) {
