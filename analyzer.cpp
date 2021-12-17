@@ -95,7 +95,7 @@ void put_mutex_lock_error(std::map<std::pair<const pthread_mutex_t *, mutex_acti
 
 // this may give false positives if for example an other mutex is malloced()/new'd
 // over the location of a previously unlocked mutex
-std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<size_t> > find_double_un_locks(const lock_trace_item_t *const items, const size_t n_records)
+std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<size_t> > do_find_double_un_locks(const lock_trace_item_t *const items, const size_t n_records)
 {
 	std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<size_t> > out;
 
@@ -210,6 +210,60 @@ void put_mutex_details(FILE *const fh, const lock_trace_item_t & record)
 	fprintf(fh, "</table>\n");
 }
 
+void find_double_un_locks(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto mutex_lock_mistakes = do_find_double_un_locks(data, n_records);
+
+	fprintf(fh, "<article>\n");
+	fprintf(fh, "<heading><h2>mutex lock/unlock mistakes</h2></heading>\n");
+	fprintf(fh, "<p>Count: %zu</p>\n", mutex_lock_mistakes.size());
+
+	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
+		fprintf(fh, "<heading><h3>mutex %p, type \"%s\"</h3></heading>\n", (const void *)mutex_lock_mistake.first.first, mutex_action_error_str[mutex_lock_mistake.first.second]);
+
+		for(auto idx : mutex_lock_mistake.second)
+			put_mutex_details(fh, data[idx]);
+	}
+
+	fprintf(fh, "</article>\n");
+}
+
+std::map<int, std::vector<size_t> > do_list_fuction_call_errors(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	std::map<int, std::vector<size_t> > errors;
+
+	for(size_t i=0; i<n_records; i++) {
+		if (data[i].rc == 0)
+			continue;
+
+		auto it = errors.find(data[i].rc);
+		if (it == errors.end())
+			errors.insert({ data[i].rc, { i } });
+		else
+			it->second.push_back(i);
+	}
+
+	return errors;
+}
+
+void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto error_list = do_list_fuction_call_errors(data, n_records);
+
+	fprintf(fh, "<article>\n");
+	fprintf(fh, "<heading><h2>function call errors</h2></heading>\n");
+	fprintf(fh, "<p>Count: %zu</p>\n", error_list.size());
+
+	for(auto it : error_list) {
+		fprintf(fh, "<heading><h3>%s</h3></heading>\n", strerror(it.first));
+
+		for(auto idx : it.second)
+			put_mutex_details(fh, data[idx]);
+	}
+
+	fprintf(fh, "</article>\n");
+}
+
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
@@ -252,20 +306,9 @@ int main(int argc, char *argv[])
 
 	// TODO emit meta
 
-	auto mutex_lock_mistakes = find_double_un_locks(data, n_records);
+	list_fuction_call_errors(fh, data, n_records);
 
-	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2>mutex lock/unlock mistakes</h2></heading>\n");
-	fprintf(fh, "<p>Count: %zu</p>\n", mutex_lock_mistakes.size());
-
-	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
-		fprintf(fh, "<heading><h3>mutex %p, type \"%s\"</h3></heading>\n", (const void *)mutex_lock_mistake.first.first, mutex_action_error_str[mutex_lock_mistake.first.second]);
-
-		for(auto idx : mutex_lock_mistake.second)
-			put_mutex_details(fh, data[idx]);
-	}
-
-	fprintf(fh, "</article>\n");
+	find_double_un_locks(fh, data, n_records);
 
 	fclose(fh);
 }
