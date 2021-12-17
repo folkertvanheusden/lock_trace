@@ -5,7 +5,6 @@ It traces usage of pthread_mutex_lock and pthread_mutex_unlock
 These are also used underneath by e.g. std::mutex.
 It can then show if certain invalid actions were performed on
 the mutexes used.
-rwlocks are not yet supported.
 
 
 requirements
