@@ -215,7 +215,7 @@ void find_double_un_locks(FILE *const fh, const lock_trace_item_t *const data, c
 	auto mutex_lock_mistakes = do_find_double_un_locks(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2>mutex lock/unlock mistakes</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"double\">mutex lock/unlock mistakes</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", mutex_lock_mistakes.size());
 
 	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
@@ -251,7 +251,7 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	auto error_list = do_list_fuction_call_errors(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2>function call errors</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"errors\">function call errors</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", error_list.size());
 
 	for(auto it : error_list) {
@@ -262,6 +262,25 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	}
 
 	fprintf(fh, "</article>\n");
+}
+
+void put_html_header(FILE *const fh)
+{
+	fprintf(fh, "<!DOCTYPE html>\n<html><head>\n");
+	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
+	fprintf(fh, "<title>lock trace</title></head><body>\n");
+	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
+
+	fprintf(fh, "<h2>table of contents</h2>\n");
+	fprintf(fh, "<ul>\n");
+	fprintf(fh, "<li><a href=\"#errors\">errors</a>\n");
+	fprintf(fh, "<li><a href=\"#double\">double locks/unlocks</a>\n");
+	fprintf(fh, "</ul>\n");
+}
+
+void put_html_tail(FILE *const fh)
+{
+	fprintf(fh, "<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></html>\n");
 }
 
 int main(int argc, char *argv[])
@@ -304,11 +323,15 @@ int main(int argc, char *argv[])
 
 	const uint64_t n_records = json_integer_value(json_object_get(meta, "n_records"));
 
+	put_html_header(fh);
+
 	// TODO emit meta
 
 	list_fuction_call_errors(fh, data, n_records);
 
 	find_double_un_locks(fh, data, n_records);
+
+	put_html_tail(fh);
 
 	fclose(fh);
 }
