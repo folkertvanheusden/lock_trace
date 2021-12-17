@@ -11,7 +11,7 @@
 #include <time.h>
 #include <sys/time.h>
 
-#define TIME 10000000
+#define TIME 100000
 
 uint64_t get_us()
 {

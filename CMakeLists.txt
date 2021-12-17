@@ -22,8 +22,8 @@ add_executable(test
 	test.c
 	)
 
-add_executable(dat_to_json
-    dat_to_json.cpp
+add_executable(analyzer
+    analyzer.cpp
     )
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
@@ -40,9 +40,9 @@ target_link_libraries(lock_tracer ${JANSSON_LIBRARIES})
 target_include_directories(lock_tracer PUBLIC ${JANSSON_INCLUDE_DIRS})
 target_compile_options(lock_tracer PUBLIC ${JANSSON_CFLAGS_OTHER})
 
-target_link_libraries(dat_to_json ${JANSSON_LIBRARIES})
-target_include_directories(dat_to_json PUBLIC ${JANSSON_INCLUDE_DIRS})
-target_compile_options(dat_to_json PUBLIC ${JANSSON_CFLAGS_OTHER})
+target_link_libraries(analyzer ${JANSSON_LIBRARIES})
+target_include_directories(analyzer PUBLIC ${JANSSON_INCLUDE_DIRS})
+target_compile_options(analyzer PUBLIC ${JANSSON_CFLAGS_OTHER})
 
 target_link_libraries(lock_tracer -ldl)
 target_link_libraries(lock_tracer -rdynamic)

@@ -768,20 +768,12 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 static void emit_key_value(json_t *const tgt, const char *key, const char *value)
 {
-	json_t *obj = json_object();
-	json_object_set(obj, "type", json_string("meta"));
-	json_object_set(obj, key, json_string(value));
-
-    json_array_append(tgt, obj);
+	json_object_set(tgt, key, json_string(value));
 }
 
 static void emit_key_value(json_t *const tgt, const char *key, const uint64_t value)
 {
-	json_t *obj = json_object();
-	json_object_set(obj, "type", json_string("meta"));
-	json_object_set(obj, key, json_integer(value));
-
-    json_array_append(tgt, obj);
+	json_object_set(tgt, key, json_integer(value));
 }
 
 void exit(int status)
@@ -823,42 +815,42 @@ void exit(int status)
 		if (!fh)
 			fh = stderr;
 
-        json_t *arr = json_array();
+		json_t *obj = json_object();
 
 		char hostname[HOST_NAME_MAX + 1];
 		gethostname(hostname, sizeof hostname);
 
-		emit_key_value(arr, "hostname", hostname);
+		emit_key_value(obj, "hostname", hostname);
 
-		emit_key_value(arr, "start_ts", global_start_ts);
+		emit_key_value(obj, "start_ts", global_start_ts);
 
-		emit_key_value(arr, "end_ts", end_ts);
+		emit_key_value(obj, "end_ts", end_ts);
 
-		emit_key_value(arr, "fork_warning", fork_warning);
+		emit_key_value(obj, "fork_warning", fork_warning);
 
-		emit_key_value(arr, "n_procs", get_nprocs());
+		emit_key_value(obj, "n_procs", get_nprocs());
 
 		pid_t pid = getpid();
-		emit_key_value(arr, "pid", pid);
+		emit_key_value(obj, "pid", pid);
 
 		int s = sched_getscheduler(pid);
 		if (s == SCHED_OTHER)
-			emit_key_value(arr, "scheduler", "sched-other");
+			emit_key_value(obj, "scheduler", "sched-other");
 		else if (s == SCHED_BATCH)
-			emit_key_value(arr, "scheduler", "sched-batch");
+			emit_key_value(obj, "scheduler", "sched-batch");
 		else if (s == SCHED_IDLE)
-			emit_key_value(arr, "scheduler", "sched-idle");
+			emit_key_value(obj, "scheduler", "sched-idle");
 		else if (s == SCHED_FIFO)
-			emit_key_value(arr, "scheduler", "sched-fifo");
+			emit_key_value(obj, "scheduler", "sched-fifo");
 		else if (s == SCHED_RR)
-			emit_key_value(arr, "scheduler", "sched-rr");
+			emit_key_value(obj, "scheduler", "sched-rr");
 		else
-			emit_key_value(arr, "scheduler", "unknown");
+			emit_key_value(obj, "scheduler", "unknown");
 
-		emit_key_value(arr, "mutex_type_normal", PTHREAD_MUTEX_NORMAL);
-		emit_key_value(arr, "mutex_type_recursive", PTHREAD_MUTEX_RECURSIVE);
-		emit_key_value(arr, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
-		emit_key_value(arr, "mutex_type_adaptive", PTHREAD_MUTEX_ADAPTIVE_NP);
+		emit_key_value(obj, "mutex_type_normal", PTHREAD_MUTEX_NORMAL);
+		emit_key_value(obj, "mutex_type_recursive", PTHREAD_MUTEX_RECURSIVE);
+		emit_key_value(obj, "mutex_type_errorcheck", PTHREAD_MUTEX_ERRORCHECK);
+		emit_key_value(obj, "mutex_type_adaptive", PTHREAD_MUTEX_ADAPTIVE_NP);
 
 		char exe_name[PATH_MAX] = { 0 };
 		if (readlink("/proc/self/exe", exe_name, sizeof(exe_name) - 1) == -1) {
@@ -867,15 +859,15 @@ void exit(int status)
 			color("\033[0m");
 		}
 
-		emit_key_value(arr, "exe_name", exe_name);
+		emit_key_value(obj, "exe_name", exe_name);
 
-		emit_key_value(arr, "measurements", data_filename);
+		emit_key_value(obj, "measurements", data_filename);
 
-		emit_key_value(arr, "cnt_mutex_trylock", cnt_mutex_trylock);
-		emit_key_value(arr, "cnt_rwlock_try_rdlock", cnt_rwlock_try_rdlock);
-		emit_key_value(arr, "cnt_rwlock_try_timedrdlock", cnt_rwlock_try_timedrdlock);
-		emit_key_value(arr, "cnt_rwlock_try_wrlock", cnt_rwlock_try_wrlock);
-		emit_key_value(arr, "cnt_rwlock_try_timedwrlock", cnt_rwlock_try_timedwrlock);
+		emit_key_value(obj, "cnt_mutex_trylock", cnt_mutex_trylock);
+		emit_key_value(obj, "cnt_rwlock_try_rdlock", cnt_rwlock_try_rdlock);
+		emit_key_value(obj, "cnt_rwlock_try_timedrdlock", cnt_rwlock_try_timedrdlock);
+		emit_key_value(obj, "cnt_rwlock_try_wrlock", cnt_rwlock_try_wrlock);
+		emit_key_value(obj, "cnt_rwlock_try_timedwrlock", cnt_rwlock_try_timedwrlock);
 
 		// Copy, in case a thread is still running and adding new records: a for-loop
 		// on 'items_idx' might run longer than intended and even emit garbage.
@@ -884,11 +876,11 @@ void exit(int status)
 		if (n_rec_inserted > n_records)
 			n_rec_inserted = n_records;
 
-		emit_key_value(arr, "n_records", n_rec_inserted);
-		emit_key_value(arr, "n_records_max", n_records);
+		emit_key_value(obj, "n_records", n_rec_inserted);
+		emit_key_value(obj, "n_records_max", n_records);
 
-		fprintf(fh, "%s\n", json_dumps(arr, JSON_COMPACT));
-		json_decref(arr);
+		fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
+		json_decref(obj);
 
 		if (fh != stderr) {
 			fclose(fh);
