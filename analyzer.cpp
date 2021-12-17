@@ -76,15 +76,15 @@ const lock_trace_item_t *load_data(const std::string & filename)
 	return data;
 }
 
-// mae_already_locked: already locked by this tid
-// mae_not_locked: unlock without lock
-// mae_not_owner: other thread unlocks mutex
-typedef enum { mae_already_locked = 0, mae_not_locked, mae_not_owner } mutex_action_error_t;
-constexpr const char *const mutex_action_error_str[] = { "already locked", "not locked", "not owner" };
+// lae_already_locked: already locked by this tid
+// lae_not_locked: unlock without lock
+// lae_not_owner: other thread unlocks mutex
+typedef enum { lae_already_locked = 0, lae_not_locked, lae_not_owner } lock_action_error_t;
+constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner" };
 
-void put_mutex_lock_error(std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<size_t> > *const target, const pthread_mutex_t *const mutex, const mutex_action_error_t error_type, const size_t record_nr)
+void put_mutex_lock_error(std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<size_t> > *const target, const pthread_mutex_t *const mutex, const lock_action_error_t error_type, const size_t record_nr)
 {
-	std::pair<const pthread_mutex_t *, mutex_action_error_t> key { mutex, error_type };
+	std::pair<const pthread_mutex_t *, lock_action_error_t> key { mutex, error_type };
 	auto it = target->find(key);
 
 	if (it == target->end())
@@ -95,9 +95,9 @@ void put_mutex_lock_error(std::map<std::pair<const pthread_mutex_t *, mutex_acti
 
 // this may give false positives if for example an other mutex is malloced()/new'd
 // over the location of a previously unlocked mutex
-std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<size_t> > do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const size_t n_records)
+std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<size_t> > do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const size_t n_records)
 {
-	std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<size_t> > out;
+	std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::vector<size_t> > out;
 
 	std::map<const pthread_mutex_t *, std::set<pid_t> > locked;
 
@@ -110,7 +110,7 @@ std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<s
 			auto it = locked.find(mutex);
 			if (it != locked.end()) {
 				if (it->second.find(tid) != it->second.end())
-					put_mutex_lock_error(&out, mutex, mae_already_locked, i);
+					put_mutex_lock_error(&out, mutex, lae_already_locked, i);
 				else {
 					// new locker of this mutex
 					it->second.insert(tid);
@@ -125,12 +125,12 @@ std::map<std::pair<const pthread_mutex_t *, mutex_action_error_t>, std::vector<s
 			// see if it is not locked (mistake)
 			auto it = locked.find(mutex);
 			if (it == locked.end())
-				put_mutex_lock_error(&out, mutex, mae_not_locked, i);
+				put_mutex_lock_error(&out, mutex, lae_not_locked, i);
 			// see if it is not locked by current tid (mistake)
 			else {
 				auto tid_it = it->second.find(tid);
 				if (tid_it == it->second.end())
-					put_mutex_lock_error(&out, mutex, mae_not_owner, i);
+					put_mutex_lock_error(&out, mutex, lae_not_owner, i);
 
 				it->second.erase(tid_it);
 
@@ -195,7 +195,7 @@ void put_call_trace(FILE *const fh, const lock_trace_item_t & record)
 }
 #endif
 
-void put_mutex_details(FILE *const fh, const lock_trace_item_t & record)
+void put_record_details(FILE *const fh, const lock_trace_item_t & record)
 {
 	fprintf(fh, "<table>\n");
 	fprintf(fh, "<tr><td>tid:</td><td>%d</td></tr>\n", record.tid);
@@ -219,10 +219,10 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 	fprintf(fh, "<p>Count: %zu</p>\n", mutex_lock_mistakes.size());
 
 	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
-		fprintf(fh, "<heading><h3>mutex %p, type \"%s\"</h3></heading>\n", (const void *)mutex_lock_mistake.first.first, mutex_action_error_str[mutex_lock_mistake.first.second]);
+		fprintf(fh, "<heading><h3>mutex %p, type \"%s\"</h3></heading>\n", (const void *)mutex_lock_mistake.first.first, lock_action_error_str[mutex_lock_mistake.first.second]);
 
 		for(auto idx : mutex_lock_mistake.second)
-			put_mutex_details(fh, data[idx]);
+			put_record_details(fh, data[idx]);
 	}
 
 	fprintf(fh, "</article>\n");
@@ -258,7 +258,7 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 		fprintf(fh, "<heading><h3>%s</h3></heading>\n", strerror(it.first));
 
 		for(auto idx : it.second)
-			put_mutex_details(fh, data[idx]);
+			put_record_details(fh, data[idx]);
 	}
 
 	fprintf(fh, "</article>\n");
@@ -320,7 +320,115 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
 		for(auto idx : it.second)
-			put_mutex_details(fh, data[idx]);
+			put_record_details(fh, data[idx]);
+	}
+
+	fprintf(fh, "</article>\n");
+}
+
+// TODO: put_rwlock_error / put_mutex_lock_error: make into a generic function
+void put_rwlock_error(std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::vector<size_t> > *const target, const pthread_rwlock_t *const mutex, const lock_action_error_t error_type, const size_t record_nr)
+{
+	std::pair<const pthread_rwlock_t *, lock_action_error_t> key { mutex, error_type };
+	auto it = target->find(key);
+
+	if (it == target->end())
+		target->insert({ key, { record_nr } });
+	else
+		it->second.push_back(record_nr);
+}
+
+// see do_find_double_un_locks_mutex comment about false positives
+std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::vector<size_t> > do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const size_t n_records)
+{
+	std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::vector<size_t> > out;
+
+	std::map<const pthread_rwlock_t *, std::set<pid_t> > r_locked;
+	std::map<const pthread_rwlock_t *, std::set<pid_t> > w_locked;
+
+	for(size_t i=0; i<n_records; i++) {
+		const pthread_rwlock_t *const rwlock = (const pthread_rwlock_t *)data[i].lock;
+		const pid_t tid = data[i].tid;
+
+		if (data[i].la == a_r_lock) {
+			// see if it is already locked by current 'tid' which is a mistake
+			auto it = r_locked.find(rwlock);
+			if (it != r_locked.end()) {
+				if (it->second.find(tid) != it->second.end())
+					put_rwlock_error(&out, rwlock, lae_already_locked, i);
+				else {
+					// new locker of this rwlock
+					it->second.insert(tid);
+				}
+			}
+			else {
+				// new rwlock
+				r_locked.insert({ rwlock, { tid } });
+			}
+		}
+		else if (data[i].la == a_w_lock) {
+			auto it = w_locked.find(rwlock);
+			if (it != w_locked.end()) {
+				if (it->second.find(tid) != it->second.end())
+					put_rwlock_error(&out, rwlock, lae_already_locked, i);
+				else
+					it->second.insert(tid);
+			}
+			else {
+				w_locked.insert({ rwlock, { tid } });
+			}
+		}
+		else if (data[i].la == a_unlock) {
+			// see if it is not locked (mistake)
+			auto it = w_locked.find(rwlock);
+			if (it == w_locked.end()) {
+				// check r_locked
+
+				auto it = r_locked.find(rwlock);
+				if (it == r_locked.end())
+					put_rwlock_error(&out, rwlock, lae_not_locked, i);
+				// see if it is not locked by current tid (mistake)
+				else {
+					auto tid_it = it->second.find(tid);
+					if (tid_it == it->second.end())
+						put_rwlock_error(&out, rwlock, lae_not_owner, i);
+
+					it->second.erase(tid_it);
+
+					if (it->second.empty())
+						r_locked.erase(it);
+				}
+			}
+			// see if it is not locked by current tid (mistake)
+			else {
+				auto tid_it = it->second.find(tid);
+				if (tid_it == it->second.end())
+					put_rwlock_error(&out, rwlock, lae_not_owner, i);
+
+				it->second.erase(tid_it);
+
+				if (it->second.empty())
+					w_locked.erase(it);
+			}
+		}
+	}
+
+	return out;
+}
+
+void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto rw_lock_mistakes = do_find_double_un_locks_rwlock(data, n_records);
+
+	fprintf(fh, "<article>\n");
+	fprintf(fh, "<heading><h2 id=\"doublerw\">r/w-lock lock/unlock mistakes</h2></heading>\n");
+	fprintf(fh, "<p>Count: %zu</p>\n", rw_lock_mistakes.size());
+
+	for(auto rwlock_lock_mistake : rw_lock_mistakes) {
+		fprintf(fh, "<heading><h3>r/w-lock %p, type \"%s\"</h3></heading>\n", (const void *)rwlock_lock_mistake.first.first, lock_action_error_str[rwlock_lock_mistake.first.second]);
+
+		for(auto idx : rwlock_lock_mistake.second)
+			put_record_details(fh, data[idx]);
 	}
 
 	fprintf(fh, "</article>\n");
@@ -338,6 +446,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a href=\"#errors\">errors</a>\n");
 	fprintf(fh, "<li><a href=\"#doublem\">double lock/unlock mutexes</a>\n");
 	fprintf(fh, "<li><a href=\"#stillm\">still locked mutexes</a>\n");
+	fprintf(fh, "<li><a href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "</ul>\n");
 }
 
@@ -395,6 +504,8 @@ int main(int argc, char *argv[])
 	find_double_un_locks_mutex(fh, data, n_records);
 
 	find_still_locked_mutex(fh, data, n_records);
+
+	find_double_un_locks_rwlock(fh, data, n_records);
 
 	put_html_tail(fh);
 
