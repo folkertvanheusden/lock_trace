@@ -143,7 +143,6 @@ int main(int argc, char *argv[])
         else
             write_json_string(fh, "thread_name", "?", true);
 
-        write_json_string(fh, "type", "data", true);
         write_json_int(fh, "t", i, true);
         write_json_int(fh, "lock", (unsigned long long int)items[i].lock, true);
         write_json_int(fh, "tid", items[i].tid, true);

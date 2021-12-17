@@ -336,7 +336,7 @@ mutex_type_counts[PTHREAD_MUTEX_ERRORCHECK] = 0
 mutex_type_counts[PTHREAD_MUTEX_ADAPTIVE] = 0
 
 for j in json.load(open(data_json_file, 'r')):
-    if j['type'] == 'data' and j['action'] == 'lock':
+    if j['action'] == 'lock':
         lock_hex = '%x' % j['lock']
 
         if include_lock_stacks:
@@ -406,7 +406,7 @@ for j in json.load(open(data_json_file, 'r')):
 
         by_who_t[j['tid']][j['lock']] = j
 
-    elif j['type'] == 'data' and j['action'] == 'unlock':
+    elif j['action'] == 'unlock':
         # don't just pop the top: unlocking can be done
         # in arbitrary order
         check_for = '%x' % j['lock']
@@ -464,7 +464,7 @@ for j in json.load(open(data_json_file, 'r')):
             if j['lock'] in by_who_t[j['tid']]:
                 del by_who_t[j['tid']][j['lock']]
 
-    elif j['type'] == 'data' and j['action'] == 'readlock':
+    elif j['action'] == 'readlock':
         lock_hex = '%x' % j['lock']
 
         if len(current_lock_stack) < max_lock_stack_depth:
@@ -527,7 +527,7 @@ for j in json.load(open(data_json_file, 'r')):
         l_durations[j['lock']]['n'] += 1  # n
         l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
 
-    elif j['type'] == 'data' and j['action'] == 'writelock':
+    elif j['action'] == 'writelock':
         lock_hex = '%x' % j['lock']
 
         if len(current_lock_stack) < max_lock_stack_depth:
@@ -584,7 +584,7 @@ for j in json.load(open(data_json_file, 'r')):
         l_durations[j['lock']]['n'] += 1  # n
         l_durations[j['lock']]['sum_took'] += j['lock_took']  # n
 
-    elif j['type'] == 'data' and j['action'] == 'rwunlock':
+    elif j['action'] == 'rwunlock':
         # don't just pop the top: unlocking can be done
         # in arbitrary order
         check_for = '%x' % j['lock']
@@ -625,7 +625,7 @@ for j in json.load(open(data_json_file, 'r')):
                 rw_durations[j['lock']]['last_unlock']['epoch'] = j['timestamp']
                 rw_durations[j['lock']]['median'].append(float(took))  # median
 
-    elif j['type'] == 'data' and j['action'] == 'tclean':  # forget a thread
+    elif j['action'] == 'tclean':  # forget a thread
         purge = []
 
         for s in state:
@@ -636,21 +636,18 @@ for j in json.load(open(data_json_file, 'r')):
             before[p] = state[p]
             del state[p]
 
-    elif j['type'] == 'data' and j['action'] == 'error':  # errors
+    elif j['action'] == 'error':  # errors
         errors.append(j)
 
-    elif j['type'] == 'data' and (j['action'] == 'init' or j['action'] == 'destroy'):
+    elif (j['action'] == 'init' or j['action'] == 'destroy'):
         if j['lock'] in locked and locked[j['lock']] > 0:
             j['error_descr'] = '%s mutex while in use' % j['action']
             errors.append(j)
 
-    elif j['type'] == 'data' and (j['action'] == 'rw_init' or j['action'] == 'rw_destroy'):
+    elif j['action'] == 'rw_init' or j['action'] == 'rw_destroy':
         if j['lock'] in locked and locked[j['lock']] > 0:
             j['error_descr'] = '%s rwlock while in use' % j['action'][3:]
             errors.append(j)
-
-    elif j['type'] == 'end':  # errors
-        pass
 
     else:
         print('Unknown record: %s' % j)
