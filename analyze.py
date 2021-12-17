@@ -323,10 +323,6 @@ for j in js_meta:
     elif j['type'] == 'meta' and 'scheduler' in j:
         scheduler = j['scheduler']
 
-print('%d) Loading json data from %s...' % (int(time.time() - proc_start_ts), data_json_file), file=sys.stderr)
-
-js_data = json.load(open(data_json_file, 'r'))
-
 print('%d) Processing data...' % int(time.time() - proc_start_ts), file=sys.stderr)
 
 emit_header()
@@ -339,7 +335,7 @@ mutex_type_counts[PTHREAD_MUTEX_RECURSIVE] = 0
 mutex_type_counts[PTHREAD_MUTEX_ERRORCHECK] = 0
 mutex_type_counts[PTHREAD_MUTEX_ADAPTIVE] = 0
 
-for j in js_data:
+for j in json.load(open(data_json_file, 'r')):
     if j['type'] == 'data' and j['action'] == 'lock':
         lock_hex = '%x' % j['lock']
 
