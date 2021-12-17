@@ -108,7 +108,11 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef WITH_BACKTRACE
-        for(int j=0; j<CALLER_DEPTH; j++)
+	int d = CALLER_DEPTH - 1;
+	while(d >= 0 && !items[i].caller[d])
+		d--;
+
+        for(int j=0; j<=d; j++)
             sprintf(&caller_str[strlen(caller_str)], "%p,", items[i].caller[j]);
 #endif
 
