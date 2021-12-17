@@ -200,8 +200,9 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 
 					put_lock_error(&out, mutex, lae_not_owner, hash, i);
 				}
-
-				it->second.erase(tid_it);
+				else {
+					it->second.erase(tid_it);
+				}
 
 				if (it->second.empty())
 					locked.erase(it);
@@ -465,8 +466,9 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 
 						put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 					}
-
-					it->second.erase(tid_it);
+					else {
+						it->second.erase(tid_it);
+					}
 
 					if (it->second.empty())
 						r_locked.erase(it);
