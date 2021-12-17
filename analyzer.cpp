@@ -341,6 +341,21 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	fprintf(fh, "</article>\n");
 }
 
+std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_trace_item_t *const data, const std::vector<size_t> & backtraces)
+{
+    std::map<hash_t, size_t> out;
+
+    for(auto i : backtraces) {
+        hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+
+        auto it = out.find(hash);
+        if (it == out.end())
+            out.insert({ hash, i });
+    }
+
+    return out;
+}
+
 std::map<const pthread_mutex_t *, std::vector<size_t> > do_find_still_locked_mutex(const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	std::map<const pthread_mutex_t *, int> mutexes_counts;
@@ -391,13 +406,15 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 	for(auto it : still_locked_list) {
 		fprintf(fh, "<heading><h3>mutex %p</h3></heading>\n", (const void *)it.first);
 
-		if (it.second.size() == 1)
+        auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
+
+		if (unique_backtraces.size() == 1)
 			fprintf(fh, "<p>The following location did not unlock:</p>\n");
 		else
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
-		for(auto idx : it.second)
-			put_record_details(fh, data[idx], "blue");
+        for(auto entry : unique_backtraces) 
+			put_record_details(fh, data[entry.second], "blue");
 	}
 
 	fprintf(fh, "</article>\n");
