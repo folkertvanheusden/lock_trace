@@ -49,7 +49,7 @@
 
 uint64_t n_records = 16777216, emit_count_threshold = n_records / 10;
 size_t length = 0;
-int fd = -1;
+int mmap_fd = -1;
 char *data_filename = nullptr;
 
 bool verbose = false;
@@ -76,7 +76,7 @@ static uint64_t get_ns()
 		return 0;
 	}
 
-        return tp.tv_sec * 1000ll * 1000ll * 1000ll + tp.tv_nsec;
+	return tp.tv_sec * 1000ll * 1000ll * 1000ll + tp.tv_nsec;
 #else
 	return 0;
 #endif
@@ -181,15 +181,15 @@ static void show_items_buffer_not_allocated_error()
 
 static void print_timestamp()
 {
-    time_t now = time(nullptr);
-    char buffer[26 + 1], *lf;
+	time_t now = time(nullptr);
+	char buffer[26 + 1], *lf;
 
-    ctime_r(&now, buffer);
-    lf = strchr(buffer, '\n');
-    if (lf)
-        *lf = 0x00;
+	ctime_r(&now, buffer);
+	lf = strchr(buffer, '\n');
+	if (lf)
+		*lf = 0x00;
 
-    fprintf(stderr, "%s ", buffer);
+	fprintf(stderr, "%s ", buffer);
 }
 
 static void show_items_buffer_full_error()
@@ -200,7 +200,7 @@ static void show_items_buffer_full_error()
 		error_shown = true;
 
 		color("\033[0;31m");
-        print_timestamp();
+		print_timestamp();
 		fprintf(stderr, "Trace buffer full\n");
 		color("\033[0m");
 	}
@@ -208,10 +208,10 @@ static void show_items_buffer_full_error()
 
 static void show_items_buffer_percent()
 {
-    color("\033[0;31m");
-    print_timestamp();
-    fprintf(stderr, "Trace buffer %.2f%% full\n", items_idx * 100.0 / n_records);
-    color("\033[0m");
+	color("\033[0;31m");
+	print_timestamp();
+	fprintf(stderr, "Trace buffer %.2f%% full\n", items_idx * 100.0 / n_records);
+	color("\033[0m");
 }
 
 static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took, const int rc, void *const shallow_backtrace)
@@ -225,17 +225,17 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 
 	uint64_t cur_idx = items_idx++;
 
-    if (verbose) {
-        if (cur_idx % emit_count_threshold == 0)
-            show_items_buffer_percent();
-    }
+	if (verbose) {
+		if (cur_idx % emit_count_threshold == 0)
+			show_items_buffer_percent();
+	}
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
 #if defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)
-            items[cur_idx].caller[0] = shallow_backtrace;
+		items[cur_idx].caller[0] = shallow_backtrace;
 #else
-			backtrace(items[cur_idx].caller, CALLER_DEPTH);
+		backtrace(items[cur_idx].caller, CALLER_DEPTH);
 #endif
 #endif
 		items[cur_idx].lock = mutex;
@@ -344,7 +344,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 		fprintf(stderr, "Mutex %p has unknown type %d (caller: %p)\n", (void *)mutex, mutex->__data.__kind, __builtin_return_address(0));
 #endif
 
-        if (enforce_error_check) {
+	if (enforce_error_check) {
 		if (mutex->__data.__kind == PTHREAD_MUTEX_NORMAL || mutex->__data.__kind == PTHREAD_MUTEX_ADAPTIVE_NP || mutex->__data.__kind == PTHREAD_MUTEX_RECURSIVE)
 			mutex->__data.__kind = PTHREAD_MUTEX_ERRORCHECK;
 	}
@@ -396,10 +396,10 @@ int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
 	if (unlikely(!org_pthread_mutex_init_h))
 		org_pthread_mutex_init_h = (org_pthread_mutex_init)dlsym(RTLD_NEXT, "pthread_mutex_init");
 
-    int rc = (*org_pthread_mutex_init_h)(mutex, attr);
+	int rc = (*org_pthread_mutex_init_h)(mutex, attr);
 	STORE_MUTEX_INFO(mutex, a_init, 0, rc);
 
-    return rc;
+	return rc;
 }
 
 int pthread_mutex_destroy(pthread_mutex_t *mutex)
@@ -407,10 +407,10 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex)
 	if (unlikely(!org_pthread_mutex_destroy_h))
 		org_pthread_mutex_destroy_h = (org_pthread_mutex_destroy)dlsym(RTLD_NEXT, "pthread_mutex_destroy");
 
-    int rc = (*org_pthread_mutex_destroy_h)(mutex);
+	int rc = (*org_pthread_mutex_destroy_h)(mutex);
 	STORE_MUTEX_INFO(mutex, a_destroy, 0, rc);
 
-    return rc;
+	return rc;
 }
 
 int pthread_mutex_trylock(pthread_mutex_t *mutex)
@@ -458,17 +458,17 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 
 	uint64_t cur_idx = items_idx++;
 
-    if (verbose) {
-        if (cur_idx % emit_count_threshold == 0)
-            show_items_buffer_percent();
-    }
+	if (verbose) {
+		if (cur_idx % emit_count_threshold == 0)
+			show_items_buffer_percent();
+	}
 
 	if (likely(cur_idx < n_records)) {
 #ifdef WITH_BACKTRACE
 #if defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)
-            items[cur_idx].caller[0] = shallow_backtrace;
+		items[cur_idx].caller[0] = shallow_backtrace;
 #else
-			backtrace(items[cur_idx].caller, CALLER_DEPTH);
+		backtrace(items[cur_idx].caller, CALLER_DEPTH);
 #endif
 #endif
 		items[cur_idx].lock = rwlock;
@@ -520,10 +520,10 @@ int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *at
 	if (unlikely(!org_pthread_rwlock_init_h))
 		org_pthread_rwlock_init_h = (org_pthread_rwlock_init)dlsym(RTLD_NEXT, "pthread_rwlock_init");
 
-    int rc = (*org_pthread_rwlock_init_h)(rwlock, attr);
+	int rc = (*org_pthread_rwlock_init_h)(rwlock, attr);
 	STORE_RWLOCK_INFO(rwlock, a_rw_init, 0, rc);
 
-    return rc;
+	return rc;
 }
 
 int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
@@ -531,10 +531,10 @@ int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
 	if (unlikely(!org_pthread_rwlock_destroy_h))
 		org_pthread_rwlock_destroy_h = (org_pthread_rwlock_destroy)dlsym(RTLD_NEXT, "pthread_rwlock_destroy");
 
-    int rc = (*org_pthread_rwlock_destroy_h)(rwlock);
+	int rc = (*org_pthread_rwlock_destroy_h)(rwlock);
 	STORE_RWLOCK_INFO(rwlock, a_rw_destroy, 0, rc);
 
-    return rc;
+	return rc;
 }
 
 int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
@@ -710,11 +710,11 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	if (env_n_records) {
 		n_records = atoll(env_n_records);
 
-        emit_count_threshold = n_records / 10;
-    }
+		emit_count_threshold = n_records / 10;
+	}
 
 	verbose = getenv("TRACE_VERBOSE") != nullptr;
-    if (verbose)
+	if (verbose)
 		fprintf(stderr, "Verbose tracing enabled\n");
 
 	enforce_error_check = getenv("ENFORCE_ERR_CHK") != nullptr;
@@ -723,27 +723,27 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 	fprintf(stderr, "Tracing max. %zu records\n", n_records);
 
-    asprintf(&data_filename, "measurements-%d.dat", getpid());
+	asprintf(&data_filename, "measurements-%d.dat", getpid());
 
-    fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-    if (fd == -1) {
+	mmap_fd = open(data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+	if (mmap_fd == -1) {
 		fprintf(stderr, "ERROR: cannot create data file %s: %s\n", data_filename, strerror(errno));
 		color("\033[0m");
 		_exit(1);
-    }
+	}
 
 	length = n_records * sizeof(lock_trace_item_t);
 
-    if (ftruncate(fd, length) == -1) {
+	if (ftruncate(mmap_fd, length) == -1) {
 		fprintf(stderr, "ERROR: problem reserving space on disk: %s\n", strerror(errno));
 		color("\033[0m");
 		_exit(1);
-    }
+	}
 
 #ifdef PREALLOCATE
-	items = (lock_trace_item_t *)mmap(nullptr, length, PROT_WRITE | PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
+	items = (lock_trace_item_t *)mmap(nullptr, length, PROT_WRITE | PROT_READ, MAP_SHARED | MAP_POPULATE, mmap_fd, 0);
 #else
-	items = (lock_trace_item_t *)mmap(nullptr, length, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0);
+	items = (lock_trace_item_t *)mmap(nullptr, length, PROT_WRITE | PROT_READ, MAP_SHARED, mmap_fd, 0);
 #endif
 
 	if (items == MAP_FAILED) {
@@ -778,20 +778,20 @@ static void emit_key_value(json_t *const tgt, const char *key, const uint64_t va
 
 void exit(int status)
 {
-    exited = true;
+	exited = true;
 	uint64_t end_ts = get_ns();
 
 	color("\033[0;31m");
 
-    unsigned long count = items_idx;
+	unsigned long count = items_idx;
 	fprintf(stderr, "Lock tracer terminating with %lu records (path: %s, %zu bytes)\n", count, get_current_dir_name(), length);
 
-    if (msync(items, length, MS_SYNC) == -1)
-        fprintf(stderr, "Problem pushing data to disk: %s\n", strerror(errno));
+	if (msync(items, length, MS_SYNC) == -1)
+		fprintf(stderr, "Problem pushing data to disk: %s\n", strerror(errno));
 
-    munmap(items, length);  // TODO error checking
+	munmap(items, length);  // TODO error checking
 
-    close(fd);
+	close(mmap_fd);
 
 	if (!items) {
 		fprintf(stderr, "No items recorded yet\n");
@@ -896,19 +896,19 @@ void exit(int status)
 
 	delete tid_names;
 
-    // dump core
+	// dump core
 	color("\033[0;31m");
 	fprintf(stderr, "Dumping core...\n");
 	color("\033[0m");
 
 	fflush(nullptr);
 
-    signal(SIGABRT, SIG_DFL);
-    abort();
+	signal(SIGABRT, SIG_DFL);
+	abort();
 }
 
 void __attribute__ ((destructor)) stop_lock_tracing()
 {
-    if (!exited)
-        exit(0);
+	if (!exited)
+		exit(0);
 }
