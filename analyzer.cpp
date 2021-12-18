@@ -351,6 +351,8 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 
 	fprintf(fh, "<section>\n");
 	fprintf(fh, "<h2 id=\"doublem\">4. mutex lock/unlock mistakes</h2>\n");
+	fprintf(fh, "<p>Mistakes are: locking a mutex another time by the same thread, unlocking mutexes that are not locked and unlocking of a mutex by some other thread than the one who locked the mutex.</p>\n");
+	fprintf(fh, "<p>This section contains a list of all the seen mutex/error-type combinations and then for each the mistakes made and then one or more backtraces (\"first\" and \"next\") where they occured.</p>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", mutex_lock_mistakes.size());
 
 	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
@@ -367,7 +369,7 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 			// then list all mistakes for this combination, show only unique backtraces
 			if (dul.latest_records.empty() == false) {
 				fprintf(fh, "<h4>next</h4>\n");
-				fprintf(fh, "<p>Mistake count: %zu</p>\n", dul.latest_records.size());
+				fprintf(fh, "<p>Mistake count: %zu (total number of backtraces seen; note that the list below is de-duplicated).</p>\n", dul.latest_records.size());
 
 				auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, dul.latest_records);
 
@@ -406,6 +408,7 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 
 	fprintf(fh, "<section>\n");
 	fprintf(fh, "<h2 id=\"errors\">3. function call errors</h2>\n");
+	fprintf(fh, "<p>pthread_-functions can fail, they then return an errno-alike error code. In this section, all that occured (for the ones checked, like mutex errors etc) are listed.</p>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", error_list.size());
 
 	for(auto it : error_list) {
@@ -467,6 +470,7 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 
 	fprintf(fh, "<section>\n");
 	fprintf(fh, "<h2 id=\"stillm\">5. still locked mutexes</h2>\n");
+	fprintf(fh, "<p>A list of the mutexes that were still locked when the program terminated.</p>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", still_locked_list.size());
 
 	for(auto it : still_locked_list) {
@@ -535,6 +539,7 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 
 	fprintf(fh, "<section>\n");
 	fprintf(fh, "<h2 id=\"stillrw\">7. still locked rwlocks</h2>\n");
+	fprintf(fh, "<p>A list of the r/w-locks that were still locked when the program terminated.</p>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", still_locked_list.size());
 
 	for(auto it : still_locked_list) {
@@ -660,6 +665,8 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 
 	fprintf(fh, "<section>\n");
 	fprintf(fh, "<h2 id=\"doublerw\">6. r/w-lock lock/unlock mistakes</h2>\n");
+	fprintf(fh, "<p>Mistakes are: read-locking a r/w-lock another time by the same thread, unlocking r/w-locks that are not locked and unlocking of an r/w-lock by some other thread than the one who locked it.</p>\n");
+	fprintf(fh, "<p>This section contains a list of all the seen r/w-lock/error-type combinations and then for each the mistakes made and then one or more backtraces (\"first\" and \"next\") where they occured.</p>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", rw_lock_mistakes.size());
 
 	// go through all mutexes for which a mistake was made
@@ -679,7 +686,7 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 			// then list all mistakes for this combination, show only unique backtraces
 			if (dul.latest_records.empty() == false) {
 				fprintf(stderr, "<h4>next</h4>\n");
-				fprintf(fh, "<p>Mistake count: %zu</p>\n", dul.latest_records.size());
+				fprintf(fh, "<p>Mistake count: %zu (total number of backtraces seen; note that the list below is de-duplicated).</p>\n", dul.latest_records.size());
 
 				auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, dul.latest_records);
 
@@ -702,6 +709,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
 
 	fprintf(fh, "<h2>table of contents</h2>\n");
+	fprintf(fh, "<p>Please note: the colors are only used for easier reading, they don't have a special meaning.</p>\n");
 	fprintf(fh, "<ol>\n");
 	fprintf(fh, "<li><a href=\"#meta\">meta data</a>\n");
 	fprintf(fh, "<li><a href=\"#durations\">durations</a>\n");
@@ -711,6 +719,8 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
 	fprintf(fh, "</ol>\n");
+
+	fprintf(fh, "<p>The \"tid\" is the thread identifier of the thread that triggered a measurement.</p>\n");
 }
 
 void put_html_tail(FILE *const fh)
@@ -783,6 +793,8 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 	fprintf(fh, "<tr><th>started at</th><td>%.9f (%s)</td></tr>\n", start_ts / double(billion), my_ctime(start_ts).c_str());
 	fprintf(fh, "<tr><th>stopped at</th><td>%.9f (%s)</td></tr>\n", end_ts / double(billion), my_ctime(end_ts).c_str());
 	fprintf(fh, "<tr><th>took</th><td>%fs</td></tr>\n", took);
+
+	fprintf(fh, "<h3>counts</h3>\n");
 	fprintf(fh, "<tr><th># mutex try-locks</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_mutex_trylock"));
 	fprintf(fh, "<tr><th># rwlock try-rdlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_rdlock"));
 	fprintf(fh, "<tr><th># rwlock try-timed-rdlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedrdlock"));
@@ -855,8 +867,10 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 
 	fprintf(fh, "<section>\n");
 
+	fprintf(fh, "<h2 id=\"durations\">2. acquisition durations</h2>\n");
+	fprintf(fh, "<p>How long it took before a mutex (or r/w-lock) was acquired. This takes longer if an other thread is already holding it and doesn't immediately return it.</p>\n");
+	fprintf(fh, "<p>Also shown is, how long mutex was held on average. 'sd' is the standard deviation.</p>\n");
 	fprintf(fh, "<table>\n");
-	fprintf(fh, "<caption><h2 id=\"durations\">2. acquire durations</h2></caption>\n");
 
 	// mutex acquisition durations
 	double avg_mutex_lock_acquire_durations = d.mutex_lock_acquire_durations / double(d.n_mutex_acquire_locks);
