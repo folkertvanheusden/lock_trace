@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-typedef enum { a_lock, a_unlock, a_thread_clean, a_error, a_r_lock, a_w_lock, a_rw_unlock, a_init, a_destroy, a_rw_init, a_rw_destroy } lock_action_t;
+typedef enum { a_lock, a_unlock, a_thread_clean, a_r_lock, a_w_lock, a_rw_unlock, a_init, a_destroy, a_rw_init, a_rw_destroy, _a_max } lock_action_t;
 
 typedef struct {
 #ifdef WITH_BACKTRACE
