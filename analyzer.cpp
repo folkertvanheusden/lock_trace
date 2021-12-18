@@ -278,11 +278,27 @@ void put_call_trace(FILE *const fh, const lock_trace_item_t & record, const std:
 }
 #endif
 
+constexpr uint64_t billion = 1000000000ll;
+
+std::string my_ctime(const uint64_t nts)
+{
+	time_t t = nts / billion;
+
+	struct tm tm { 0 };
+	localtime_r(&t, &tm);
+
+	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, nts % billion);
+}
+
 void put_record_details(FILE *const fh, const lock_trace_item_t & record, const std::string & base_color)
 {
 	fprintf(fh, "<table class=\"%s\">\n", base_color.c_str());
 	fprintf(fh, "<tr><td>tid:</td><td>%d</td></tr>\n", record.tid);
 	fprintf(fh, "<tr><td>thread name:</td><td>%s</td></tr>\n", record.thread_name);
+#ifdef MEASURE_TIMING
+	fprintf(fh, "<tr><td>timestamp:</td><td>%s</td></tr>\n", my_ctime(record.timestamp).c_str());
+	fprintf(fh, "<tr><td>took:</td><td>%.3fus</td></tr>\n", record.lock_took / 1000.0);
+#endif
 
 #if defined(WITH_BACKTRACE)
 	fprintf(fh, "<tr><td>call trace:</td><td>");
@@ -653,18 +669,6 @@ std::string get_json_string(const json_t *const js, const char *const key)
 uint64_t get_json_int(const json_t *const js, const char *const key)
 {
 	return json_integer_value(json_object_get(js, key));
-}
-
-constexpr uint64_t billion = 1000000000ll;
-
-std::string my_ctime(const uint64_t nts)
-{
-	time_t t = nts / billion;
-
-	struct tm tm { 0 };
-	localtime_r(&t, &tm);
-
-	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, nts % billion);
 }
 
 std::map<std::string, uint64_t> data_stats(const lock_trace_item_t *const data, const uint64_t n_records)
