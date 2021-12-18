@@ -136,35 +136,55 @@ hash_t calculate_callback_hash(const void *const *const pointers, const size_t n
 typedef enum { lae_already_locked = 0, lae_not_locked, lae_not_owner } lock_action_error_t;
 constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner" };
 
-	template<typename Type>
-void put_lock_error(std::map<std::pair<const Type *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > *const target, const Type *const lock, const lock_action_error_t error_type, const hash_t calltrace_hash, const size_t record_nr)
+typedef struct {
+	std::vector<size_t> latest_records;
+	size_t first_record;
+} double_un_lock_t;
+
+template<typename Type>
+void put_lock_error(std::map<std::pair<const Type *, lock_action_error_t>, std::map<hash_t, double_un_lock_t> > *const target, const Type *const lock, const lock_action_error_t error_type, const hash_t calltrace_hash, const size_t record_nr)
 {
 	std::pair<const Type *, lock_action_error_t> key { lock, error_type };
 	auto it = target->find(key);
 
 	if (it == target->end()) {
-		std::map<hash_t, std::pair<size_t, int> > entry;
-		entry.insert({ calltrace_hash, std::pair<size_t, int>(record_nr, 1) });
+		// this kind of error we've not seen earlier with this lock
+		std::map<hash_t, double_un_lock_t> entry;
+
+		double_un_lock_t data;
+		data.first_record = record_nr;
+		entry.insert({ calltrace_hash, data });
 
 		target->insert({ key, entry });
 	}
 	else {
+		// this error occured earlier with this lock
 		auto hash_map_it = it->second.find(calltrace_hash);
 
-		if (hash_map_it == it->second.end())
-			it->second.insert({ calltrace_hash, std::pair<size_t, int>(record_nr, 1) });
-		else
-			hash_map_it->second.second++;
+		if (hash_map_it == it->second.end()) {
+			double_un_lock_t data;
+			data.first_record = record_nr;
+
+			it->second.insert({ calltrace_hash, data });
+		}
+		else {
+			hash_map_it->second.latest_records.push_back(record_nr);
+		}
 	}
 }
 
 // this may give false positives if for example an other mutex is malloced()/new'd
 // over the location of a previously unlocked mutex
+typedef struct {
+	size_t first_locker;
+	std::set<pid_t> tids;
+} lock_record_t;
+
 auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const size_t n_records)
 {
-	std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > out;
+	std::map<std::pair<const pthread_mutex_t *, lock_action_error_t>, std::map<hash_t, double_un_lock_t> > out;
 
-	std::map<const pthread_mutex_t *, std::set<pid_t> > locked;
+	std::map<const pthread_mutex_t *, lock_record_t> locked;
 
 	for(size_t i=0; i<n_records; i++) {
 		const pthread_mutex_t *const mutex = (const pthread_mutex_t *)data[i].lock;
@@ -178,19 +198,19 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			// see if it is already locked by current 'tid' which is a mistake
 			auto it = locked.find(mutex);
 			if (it != locked.end()) {
-				if (it->second.find(tid) != it->second.end()) {
+				if (it->second.tids.find(tid) != it->second.tids.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, mutex, lae_already_locked, hash, i);
 				}
 				else {
 					// new locker of this mutex
-					it->second.insert(tid);
+					it->second.tids.insert(tid);
 				}
 			}
 			else {
 				// new mutex
-				locked.insert({ mutex, { tid } });
+				locked.insert({ mutex, { i, { tid } } });
 			}
 		}
 		else if (data[i].la == a_unlock) {
@@ -203,17 +223,17 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			}
 			// see if it is not locked by current tid (mistake)
 			else {
-				auto tid_it = it->second.find(tid);
-				if (tid_it == it->second.end()) {
+				auto tid_it = it->second.tids.find(tid);
+				if (tid_it == it->second.tids.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, mutex, lae_not_owner, hash, i);
 				}
 				else {
-					it->second.erase(tid_it);
+					it->second.tids.erase(tid_it);
 				}
 
-				if (it->second.empty())
+				if (it->second.tids.empty())
 					locked.erase(it);
 			}
 		}
@@ -309,6 +329,21 @@ void put_record_details(FILE *const fh, const lock_trace_item_t & record, const 
 	fprintf(fh, "</table>\n");
 }
 
+std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_trace_item_t *const data, const std::vector<size_t> & backtraces)
+{
+	std::map<hash_t, size_t> out;
+
+	for(auto i : backtraces) {
+		hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+
+		auto it = out.find(hash);
+		if (it == out.end())
+			out.insert({ hash, i });
+	}
+
+	return out;
+}
+
 void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	auto mutex_lock_mistakes = do_find_double_un_locks_mutex(data, n_records);
@@ -321,9 +356,25 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 		fprintf(fh, "<heading><h3>mutex %p, type \"%s\"</h3></heading>\n", (const void *)mutex_lock_mistake.first.first, lock_action_error_str[mutex_lock_mistake.first.second]);
 
 		for(auto map_entry : mutex_lock_mistake.second) {
-			fprintf(fh, "<p>Error count by this caller: %d</p>\n", map_entry.second.second);
+			double_un_lock_t & dul = map_entry.second;
 
-			put_record_details(fh, data[map_entry.second.first], "red");
+			// first (correct?)
+			if (dul.latest_records.empty() == false)
+				fprintf(fh, "<h4>first</h4>\n");
+			put_record_details(fh, data[dul.first_record], "red");
+
+			// then list all mistakes for this combination, show only unique backtraces
+			if (dul.latest_records.empty() == false) {
+				fprintf(fh, "<h4>next</h4>\n");
+				fprintf(fh, "<p>Mistake count: %zu</p>\n", dul.latest_records.size());
+
+				auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, dul.latest_records);
+
+				for(auto entry : unique_backtraces) 
+					put_record_details(fh, data[entry.second], "red");
+			}
+
+			fprintf(fh, "<br>\n");
 		}
 	}
 
@@ -364,21 +415,6 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	}
 
 	fprintf(fh, "</article>\n");
-}
-
-std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_trace_item_t *const data, const std::vector<size_t> & backtraces)
-{
-	std::map<hash_t, size_t> out;
-
-	for(auto i : backtraces) {
-		hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
-
-		auto it = out.find(hash);
-		if (it == out.end())
-			out.insert({ hash, i });
-	}
-
-	return out;
 }
 
 std::map<const pthread_mutex_t *, std::vector<size_t> > do_find_still_locked_mutex(const lock_trace_item_t *const data, const uint64_t n_records)
@@ -520,7 +556,7 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 // see do_find_double_un_locks_mutex comment about false positives
 auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const size_t n_records)
 {
-	std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > out;
+	std::map<std::pair<const pthread_rwlock_t *, lock_action_error_t>, std::map<hash_t, double_un_lock_t> > out;
 
 	std::map<const pthread_rwlock_t *, std::set<pid_t> > r_locked;
 	std::map<const pthread_rwlock_t *, std::set<pid_t> > w_locked;
@@ -625,14 +661,33 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 	fprintf(fh, "<heading><h2 id=\"doublerw\">r/w-lock lock/unlock mistakes</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", rw_lock_mistakes.size());
 
+	// go through all mutexes for which a mistake was made
 	for(auto rwlock_lock_mistake : rw_lock_mistakes) {
 		fprintf(fh, "<heading><h3>r/w-lock %p, type \"%s\"</h3></heading>\n", (const void *)rwlock_lock_mistake.first.first, lock_action_error_str[rwlock_lock_mistake.first.second]);
 
+		// go through every combination (lock + unlocks)
 		for(auto map_entry : rwlock_lock_mistake.second) {
-			fprintf(fh, "<p>Error count by this caller: %d</p>\n", map_entry.second.second);
+			double_un_lock_t & dul = map_entry.second;
 
-			put_record_details(fh, data[map_entry.second.first], "yellow");
+			// first (correct?)
+			if (dul.latest_records.empty() == false)
+				fprintf(stderr, "<h4>first</h4>\n");
+
+			put_record_details(fh, data[dul.first_record], "yellow");
+
+			// then list all mistakes for this combination, show only unique backtraces
+			if (dul.latest_records.empty() == false) {
+				fprintf(stderr, "<h4>next</h4>\n");
+				fprintf(fh, "<p>Mistake count: %zu</p>\n", dul.latest_records.size());
+
+				auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, dul.latest_records);
+
+				for(auto entry : unique_backtraces) 
+					put_record_details(fh, data[entry.second], "yellow");
+			}
 		}
+
+		fprintf(fh, "<br>\n");
 	}
 
 	fprintf(fh, "</article>\n");

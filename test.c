@@ -55,7 +55,7 @@ void *thread(void *p)
 
 void test_mutex()
 {
-	pthread_mutex_t mutex, mutex2, mutex3 = PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP;
+	pthread_mutex_t mutex, mutex2, mutex3 = PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP, mutex4 = PTHREAD_MUTEX_INITIALIZER;
 	pthread_mutexattr_t attr, attr2;
 
 	pthread_setname_np(pthread_self(), "test-mutex");
@@ -83,11 +83,14 @@ void test_mutex()
 	uint64_t start = get_us();
 
 	do {
-		pthread_mutex_lock(&mutex);
+		pthread_mutex_lock(&mutex4);
 
 		cnt++;
 
-		pthread_mutex_unlock(&mutex);
+		pthread_mutex_unlock(&mutex4);
+		pthread_mutex_unlock(&mutex4);
+		pthread_mutex_unlock(&mutex4);
+		pthread_mutex_unlock(&mutex4);
 	} while (get_us() - start <= TIME);
 
 	printf("%f/s\n", cnt / (TIME / 1000000.0));
