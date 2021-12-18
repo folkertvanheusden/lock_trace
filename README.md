@@ -78,6 +78,10 @@ You can also set the 'ENFORCE_ERR_CHK' environment variable. In that
 case every mutex that is not error-checking will be replaced by an
 error checking mutex. Note that this modifies the mutexes in place.
 
+Consider using the 'analyzer'-branch on github.com. That version is
+implemented in c++ and an order of magnitude faster than the python
+version (altough not feature complete yet).
+
 
 notes
 -----
