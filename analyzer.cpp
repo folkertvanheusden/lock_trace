@@ -664,7 +664,7 @@ std::string my_ctime(const uint64_t nts)
 	struct tm tm { 0 };
 	localtime_r(&t, &tm);
 
-	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, nts % billion);
+	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, nts % billion);
 }
 
 std::map<std::string, uint64_t> data_stats(const lock_trace_item_t *const data, const uint64_t n_records)
