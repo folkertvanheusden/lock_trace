@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string>
 #include <string.h>
+#include <time.h>
 #include <vector>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -610,6 +611,7 @@ void put_html_header(FILE *const fh)
 
 	fprintf(fh, "<h2>table of contents</h2>\n");
 	fprintf(fh, "<ul>\n");
+	fprintf(fh, "<li><a href=\"#meta\">meta data</a>\n");
 	fprintf(fh, "<li><a class=\"green\" href=\"#errors\">errors</a>\n");
 	fprintf(fh, "<li><a class=\"red\" href=\"#doublem\">double lock/unlock mutexes</a>\n");
 	fprintf(fh, "<li><a class=\"blue\" href=\"#stillm\">still locked mutexes</a>\n");
@@ -621,6 +623,58 @@ void put_html_header(FILE *const fh)
 void put_html_tail(FILE *const fh)
 {
 	fprintf(fh, "<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></html>\n");
+}
+
+std::string get_json_string(const json_t *const js, const char *const key)
+{
+	return json_string_value(json_object_get(js, key));
+}
+
+uint64_t get_json_int(const json_t *const js, const char *const key)
+{
+	return json_integer_value(json_object_get(js, key));
+}
+
+constexpr uint64_t billion = 1000000000ll;
+
+std::string my_ctime(const uint64_t nts)
+{
+	time_t t = nts / billion;
+
+	struct tm tm { 0 };
+	localtime_r(&t, &tm);
+
+	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, nts % billion);
+}
+
+void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core_file, const std::string & trace_file)
+{
+	fprintf(fh, "<h2 id=\"meta\">META DATA</h2>\n");
+	fprintf(fh, "<table><tr><th colspan=2>meta data</th></tr>\n");
+	fprintf(fh, "<tr><td>executable:</td><td>%s</td></tr>\n", get_json_string(meta, "exe_name").c_str());
+	fprintf(fh, "<tr><td>PID:</td><td>%ld</td></tr>\n", get_json_int(meta, "pid"));
+	fprintf(fh, "<tr><td>scheduler:</td><td>%s</td></tr>\n", get_json_string(meta, "scheduler").c_str());
+	fprintf(fh, "<tr><td>host name:</td><td>%s</td></tr>\n", get_json_string(meta, "hostname").c_str());
+	fprintf(fh, "<tr><td>core file:</td><td>%s</td></tr>\n", core_file.c_str());
+	fprintf(fh, "<tr><td>trace file:</td><td>%s</td></tr>\n", trace_file.c_str());
+	double took = double(get_json_int(meta, "end_ts") - get_json_int(meta, "start_ts")) / billion;
+	uint64_t n_records = get_json_int(meta, "n_records");
+	uint64_t n_records_max = get_json_int(meta, "n_records_max");
+	double n_per_sec = took > 0 ? n_records / took: 0;
+	fprintf(fh, "<tr><td># trace records:</td><td>%ld (%.2f%%, %.2f%%/s)</td></tr>\n", n_records, n_records * 100.0 / n_records_max, n_per_sec * 100.0 / n_records_max);
+	fprintf(fh, "<tr><td>fork warning:</td><td>%s</td></tr>\n", get_json_int(meta, "fork_warning") ? "true" : "false");
+	fprintf(fh, "<tr><td># cores:</td><td>%ld</td></tr>\n", get_json_int(meta, "n_procs"));
+	uint64_t start_ts = get_json_int(meta, "start_ts");
+	uint64_t end_ts = get_json_int(meta, "end_ts");
+	fprintf(fh, "<tr><td>started at:</td><td>%.9f (%s)</td></tr>\n", start_ts / double(billion), my_ctime(start_ts).c_str());
+	fprintf(fh, "<tr><td>stopped at:</td><td>%.9f (%s)</td></tr>\n", end_ts / double(billion), my_ctime(end_ts).c_str());
+	fprintf(fh, "<tr><td>took:</td><td>%fs</td></tr>\n", took);
+	fprintf(fh, "<tr><td># mutex try-locks</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_mutex_trylock"));
+	fprintf(fh, "<tr><td># rwlock try-rdlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_rdlock"));
+	fprintf(fh, "<tr><td># rwlock try-timed-rdlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedrdlock"));
+	fprintf(fh, "<tr><td># rwlock try-wrlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_wrlock"));
+	fprintf(fh, "<tr><td># rwlock try-timed-rwlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedwrlock"));
+	fprintf(fh, "</table>\n");
 }
 
 int main(int argc, char *argv[])
@@ -653,7 +707,7 @@ int main(int argc, char *argv[])
 	if (!meta)
 		return 1;
 
-	const lock_trace_item_t *const data = load_data(json_string_value(json_object_get(meta, "measurements")));
+	const lock_trace_item_t *const data = load_data(get_json_string(meta, "measurements"));
 
 	FILE *fh = fopen(output_file.c_str(), "w");
 	if (!fh) {
@@ -661,11 +715,11 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	const uint64_t n_records = json_integer_value(json_object_get(meta, "n_records"));
+	const uint64_t n_records = get_json_int(meta, "n_records");
 
 	put_html_header(fh);
 
-	// TODO emit meta
+	emit_meta_data(fh, meta, core_file, trace_file);
 
 	list_fuction_call_errors(fh, data, n_records);
 
