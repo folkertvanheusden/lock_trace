@@ -293,7 +293,7 @@ void put_call_trace(FILE *const fh, const lock_trace_item_t & record, const std:
 		d--;
 
 	for(int i=0; i<=d; i++)
-		fprintf(fh, "<tr><td>%p</td><td>%s</td></tr>\n", record.caller[i], lookup_symbol(record.caller[i]).c_str());
+		fprintf(fh, "<tr><th>%p</th><td>%s</td></tr>\n", record.caller[i], lookup_symbol(record.caller[i]).c_str());
 
 	fprintf(fh, "</table>\n");
 }
@@ -314,15 +314,15 @@ std::string my_ctime(const uint64_t nts)
 void put_record_details(FILE *const fh, const lock_trace_item_t & record, const std::string & base_color)
 {
 	fprintf(fh, "<table class=\"%s\">\n", base_color.c_str());
-	fprintf(fh, "<tr><td>tid:</td><td>%d</td></tr>\n", record.tid);
-	fprintf(fh, "<tr><td>thread name:</td><td>%s</td></tr>\n", record.thread_name);
+	fprintf(fh, "<tr><th>tid</th><td>%d</td></tr>\n", record.tid);
+	fprintf(fh, "<tr><th>thread name</th><td>%s</td></tr>\n", record.thread_name);
 #ifdef MEASURE_TIMING
-	fprintf(fh, "<tr><td>timestamp:</td><td>%s</td></tr>\n", my_ctime(record.timestamp).c_str());
-	fprintf(fh, "<tr><td>took:</td><td>%.3fus</td></tr>\n", record.lock_took / 1000.0);
+	fprintf(fh, "<tr><th>timestamp</th><td>%s</td></tr>\n", my_ctime(record.timestamp).c_str());
+	fprintf(fh, "<tr><th>took</th><td>%.3fus</td></tr>\n", record.lock_took / 1000.0);
 #endif
 
 #if defined(WITH_BACKTRACE)
-	fprintf(fh, "<tr><td>call trace:</td><td>");
+	fprintf(fh, "<tr><th>call trace</th><td>");
 	put_call_trace(fh, record, base_color);
 	fprintf(fh, "</td></tr>\n");
 #endif
@@ -350,7 +350,7 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 	auto mutex_lock_mistakes = do_find_double_un_locks_mutex(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"doublem\">mutex lock/unlock mistakes</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"doublem\">4. mutex lock/unlock mistakes</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", mutex_lock_mistakes.size());
 
 	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
@@ -405,7 +405,7 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	auto error_list = do_list_fuction_call_errors(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"errors\">function call errors</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"errors\">3. function call errors</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", error_list.size());
 
 	for(auto it : error_list) {
@@ -466,7 +466,7 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 	auto still_locked_list = do_find_still_locked_mutex(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"stillm\">still locked mutexes</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"stillm\">5. still locked mutexes</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", still_locked_list.size());
 
 	for(auto it : still_locked_list) {
@@ -534,7 +534,7 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 	auto still_locked_list = do_find_still_locked_rwlock(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"stillrw\">still locked rwlocks</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"stillrw\">7. still locked rwlocks</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", still_locked_list.size());
 
 	for(auto it : still_locked_list) {
@@ -659,7 +659,7 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 	auto rw_lock_mistakes = do_find_double_un_locks_rwlock(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"doublerw\">r/w-lock lock/unlock mistakes</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"doublerw\">6. r/w-lock lock/unlock mistakes</h2></heading>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", rw_lock_mistakes.size());
 
 	// go through all mutexes for which a mistake was made
@@ -697,12 +697,12 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 void put_html_header(FILE *const fh)
 {
 	fprintf(fh, "<!DOCTYPE html>\n<html><head>\n");
-	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;width:100%%}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
+	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
 	fprintf(fh, "<title>lock trace</title></head><body>\n");
 	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
 
 	fprintf(fh, "<h2>table of contents</h2>\n");
-	fprintf(fh, "<ul>\n");
+	fprintf(fh, "<ol>\n");
 	fprintf(fh, "<li><a href=\"#meta\">meta data</a>\n");
 	fprintf(fh, "<li><a href=\"#durations\">durations</a>\n");
 	fprintf(fh, "<li><a class=\"green\" href=\"#errors\">errors</a>\n");
@@ -710,7 +710,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"blue\" href=\"#stillm\">still locked mutexes</a>\n");
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
-	fprintf(fh, "</ul>\n");
+	fprintf(fh, "</ol>\n");
 }
 
 void put_html_tail(FILE *const fh)
@@ -763,36 +763,36 @@ std::map<std::string, uint64_t> data_stats(const lock_trace_item_t *const data, 
 
 void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core_file, const std::string & trace_file, const lock_trace_item_t *const data, const uint64_t n_records)
 {
-	fprintf(fh, "<h2 id=\"meta\">META DATA</h2>\n");
+	fprintf(fh, "<h2 id=\"meta\">1. META DATA</h2>\n");
 	fprintf(fh, "<table><tr><th colspan=2>meta data</th></tr>\n");
-	fprintf(fh, "<tr><td>executable:</td><td>%s</td></tr>\n", get_json_string(meta, "exe_name").c_str());
-	fprintf(fh, "<tr><td>PID:</td><td>%ld</td></tr>\n", get_json_int(meta, "pid"));
-	fprintf(fh, "<tr><td>scheduler:</td><td>%s</td></tr>\n", get_json_string(meta, "scheduler").c_str());
-	fprintf(fh, "<tr><td>host name:</td><td>%s</td></tr>\n", get_json_string(meta, "hostname").c_str());
-	fprintf(fh, "<tr><td>core file:</td><td>%s</td></tr>\n", core_file.c_str());
-	fprintf(fh, "<tr><td>trace file:</td><td>%s</td></tr>\n", trace_file.c_str());
+	fprintf(fh, "<tr><th>executable</th><td>%s</td></tr>\n", get_json_string(meta, "exe_name").c_str());
+	fprintf(fh, "<tr><th>PID</th><td>%ld</td></tr>\n", get_json_int(meta, "pid"));
+	fprintf(fh, "<tr><th>scheduler</th><td>%s</td></tr>\n", get_json_string(meta, "scheduler").c_str());
+	fprintf(fh, "<tr><th>host name</th><td>%s</td></tr>\n", get_json_string(meta, "hostname").c_str());
+	fprintf(fh, "<tr><th>core file</th><td>%s</td></tr>\n", core_file.c_str());
+	fprintf(fh, "<tr><th>trace file</th><td>%s</td></tr>\n", trace_file.c_str());
 	double took = double(get_json_int(meta, "end_ts") - get_json_int(meta, "start_ts")) / billion;
 	uint64_t _n_records = get_json_int(meta, "n_records");
 	uint64_t _n_records_max = get_json_int(meta, "n_records_max");
 	double n_per_sec = took > 0 ? _n_records / took: 0;
-	fprintf(fh, "<tr><td># trace records:</td><td>%ld (%.2f%%, %.2f%%/s)</td></tr>\n", _n_records, _n_records * 100.0 / _n_records_max, n_per_sec * 100.0 / _n_records_max);
-	fprintf(fh, "<tr><td>fork warning:</td><td>%s</td></tr>\n", get_json_int(meta, "fork_warning") ? "true" : "false");
-	fprintf(fh, "<tr><td># cores:</td><td>%ld</td></tr>\n", get_json_int(meta, "n_procs"));
+	fprintf(fh, "<tr><th># trace records</th><td>%ld (%.2f%%, %.2f%%/s)</td></tr>\n", _n_records, _n_records * 100.0 / _n_records_max, n_per_sec * 100.0 / _n_records_max);
+	fprintf(fh, "<tr><th>fork warning</th><td>%s</td></tr>\n", get_json_int(meta, "fork_warning") ? "true" : "false");
+	fprintf(fh, "<tr><th># cores</th><td>%ld</td></tr>\n", get_json_int(meta, "n_procs"));
 	uint64_t start_ts = get_json_int(meta, "start_ts");
 	uint64_t end_ts = get_json_int(meta, "end_ts");
-	fprintf(fh, "<tr><td>started at:</td><td>%.9f (%s)</td></tr>\n", start_ts / double(billion), my_ctime(start_ts).c_str());
-	fprintf(fh, "<tr><td>stopped at:</td><td>%.9f (%s)</td></tr>\n", end_ts / double(billion), my_ctime(end_ts).c_str());
-	fprintf(fh, "<tr><td>took:</td><td>%fs</td></tr>\n", took);
-	fprintf(fh, "<tr><td># mutex try-locks</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_mutex_trylock"));
-	fprintf(fh, "<tr><td># rwlock try-rdlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_rdlock"));
-	fprintf(fh, "<tr><td># rwlock try-timed-rdlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedrdlock"));
-	fprintf(fh, "<tr><td># rwlock try-wrlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_wrlock"));
-	fprintf(fh, "<tr><td># rwlock try-timed-rwlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedwrlock"));
+	fprintf(fh, "<tr><th>started at</th><td>%.9f (%s)</td></tr>\n", start_ts / double(billion), my_ctime(start_ts).c_str());
+	fprintf(fh, "<tr><th>stopped at</th><td>%.9f (%s)</td></tr>\n", end_ts / double(billion), my_ctime(end_ts).c_str());
+	fprintf(fh, "<tr><th>took</th><td>%fs</td></tr>\n", took);
+	fprintf(fh, "<tr><th># mutex try-locks</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_mutex_trylock"));
+	fprintf(fh, "<tr><th># rwlock try-rdlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_rdlock"));
+	fprintf(fh, "<tr><th># rwlock try-timed-rdlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedrdlock"));
+	fprintf(fh, "<tr><th># rwlock try-wrlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_wrlock"));
+	fprintf(fh, "<tr><th># rwlock try-timed-rwlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedwrlock"));
 
 	assert(n_records == _n_records);
 	auto ds = data_stats(data, n_records);
 	for(auto ds_entry : ds)
-		fprintf(fh, "<tr><td>%s</td><td>%lu</td></tr>\n", ds_entry.first.c_str(), ds_entry.second);
+		fprintf(fh, "<tr><th>%s</th><td>%lu</td></tr>\n", ds_entry.first.c_str(), ds_entry.second);
 
 	fprintf(fh, "</table>\n");
 }
@@ -854,34 +854,34 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	const auto & d = do_determine_durations(data, n_records);
 
 	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"durations\">acquire durations</h2></heading>\n");
+	fprintf(fh, "<heading><h2 id=\"durations\">2. acquire durations</h2></heading>\n");
 
 	fprintf(fh, "<table>\n");
 
 	// mutex acquisition durations
 	double avg_mutex_lock_acquire_durations = d.mutex_lock_acquire_durations / double(d.n_mutex_acquire_locks);
 	double sd_mutex_lock_acquire_durations = sqrt(d.mutex_lock_acquire_sd / double(d.n_mutex_acquire_locks) - pow(avg_mutex_lock_acquire_durations, 2.0));
-	fprintf(fh, "<tr><td>mutex:</td><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_lock_acquire_durations / 1000.0, sd_mutex_lock_acquire_durations / 1000.0);
+	fprintf(fh, "<tr><th>mutex</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_lock_acquire_durations / 1000.0, sd_mutex_lock_acquire_durations / 1000.0);
 
 	// mutex held durations
 	double avg_mutex_locked_durations = d.mutex_locked_durations / double(d.n_mutex_locked_durations);
 	if (d.n_mutex_locked_durations > 1) {
 		double sd_mutex_locked_durations = sqrt(d.mutex_locked_durations_sd / double(d.n_mutex_locked_durations) - pow(avg_mutex_locked_durations, 2.0));
-		fprintf(fh, "<tr><td>mutex held:</td><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0, sd_mutex_locked_durations / 1000.0);
+		fprintf(fh, "<tr><th>mutex held</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0, sd_mutex_locked_durations / 1000.0);
 	}
 	else {
-		fprintf(fh, "<tr><td>mutex held:</td><td>avg: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0);
+		fprintf(fh, "<tr><th>mutex held</th><td>avg: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0);
 	}
 
 	// read lock of r/w locks
 	double avg_rwlock_r_lock_acquire_durations = d.rwlock_r_lock_acquire_durations / double(d.n_rwlock_r_acquire_locks);
 	double sd_rwlock_r_lock_acquire_durations = sqrt(d.rwlock_r_lock_acquire_sd / double(d.n_rwlock_r_acquire_locks) - pow(avg_rwlock_r_lock_acquire_durations, 2.0));
-	fprintf(fh, "<tr><td>read lock:</td><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_r_lock_acquire_durations / 1000.0, sd_rwlock_r_lock_acquire_durations / 1000.0);
+	fprintf(fh, "<tr><th>read lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_r_lock_acquire_durations / 1000.0, sd_rwlock_r_lock_acquire_durations / 1000.0);
 
 	// write lock of r/w locks
 	double avg_rwlock_w_lock_acquire_durations = d.rwlock_w_lock_acquire_durations / double(d.n_rwlock_w_acquire_locks);
 	double sd_rwlock_w_lock_acquire_durations = sqrt(d.rwlock_w_lock_acquire_sd / double(d.n_rwlock_w_acquire_locks) - pow(avg_rwlock_w_lock_acquire_durations, 2.0));
-	fprintf(fh, "<tr><td>write lock:</td><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_w_lock_acquire_durations / 1000.0, sd_rwlock_w_lock_acquire_durations);
+	fprintf(fh, "<tr><th>write lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_w_lock_acquire_durations / 1000.0, sd_rwlock_w_lock_acquire_durations);
 
 	fprintf(fh, "</table>\n");
 
