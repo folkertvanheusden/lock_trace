@@ -121,24 +121,24 @@ void test_rwlock()
 
 	pthread_setname_np(pthread_self(), "test-rwlock");
 
-	pthread_rwlock_rdlock(&rwlock);
+	pthread_rwlock_rdlock(&rwlock);  // regular
 	pthread_rwlock_unlock(&rwlock);
 
+	pthread_rwlock_wrlock(&rwlock);  // regular
+	pthread_rwlock_unlock(&rwlock);
+
+	pthread_rwlock_wrlock(&rwlock);  // double write-lock
 	pthread_rwlock_wrlock(&rwlock);
-	pthread_rwlock_unlock(&rwlock);
 
-	pthread_rwlock_wrlock(&rwlock);
-	pthread_rwlock_wrlock(&rwlock);
-
-	pthread_rwlock_unlock(&rwlock);
-	pthread_rwlock_unlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);  // regular
+	pthread_rwlock_unlock(&rwlock);  // double un-lock
 	pthread_rwlock_unlock(&rwlock);
 
 	pthread_rwlock_rdlock(&rwlock);
-	pthread_rwlock_rdlock(&rwlock);
+	pthread_rwlock_rdlock(&rwlock);  // double read-lock
 
 	pthread_rwlock_unlock(&rwlock);
-	pthread_rwlock_unlock(&rwlock);
+	pthread_rwlock_unlock(&rwlock);  // double un-lock
 	pthread_rwlock_unlock(&rwlock);
 }
 
