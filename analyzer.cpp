@@ -688,13 +688,13 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 
 			// first (correct?)
 			if (dul.latest_records.empty() == false)
-				fprintf(stderr, "<h4>first</h4>\n");
+				fprintf(fh, "<h4>first</h4>\n");
 
 			put_record_details(fh, data[dul.first_record], "yellow");
 
 			// then list all mistakes for this combination, show only unique backtraces
 			if (dul.latest_records.empty() == false) {
-				fprintf(stderr, "<h4>next</h4>\n");
+				fprintf(fh, "<h4>next</h4>\n");
 				fprintf(fh, "<p>Mistake count: %zu (total number of backtraces seen; note that the list below is de-duplicated).</p>\n", dul.latest_records.size());
 
 				auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, dul.latest_records);
