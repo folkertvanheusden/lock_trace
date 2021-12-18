@@ -820,14 +820,31 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 
 typedef struct {
 	uint64_t mutex_lock_acquire_durations, n_mutex_acquire_locks, mutex_lock_acquire_sd;
+} durations_mutex_t;
+
+typedef struct {
 	uint64_t mutex_locked_durations, n_mutex_locked_durations, mutex_locked_durations_sd;
+} locked_durations_mutex_t;
+
+typedef struct {
 	uint64_t rwlock_r_lock_acquire_durations, n_rwlock_r_acquire_locks, rwlock_r_lock_acquire_sd;
 	uint64_t rwlock_w_lock_acquire_durations, n_rwlock_w_acquire_locks, rwlock_w_lock_acquire_sd;
+} durations_rwlock_t;
+
+typedef struct {
+	durations_mutex_t durations_mutex;
+	std::map<pthread_mutex_t *, durations_mutex_t> per_mutex_durations;
+
+	locked_durations_mutex_t locked_durations;
+	std::map<pthread_mutex_t *, locked_durations_mutex_t> per_mutex_locked_durations;
+
+	durations_rwlock_t durations_rwlock;
+	std::map<pthread_mutex_t *, durations_rwlock_t> per_rwlock_durations;
 } durations_t;
 
 durations_t do_determine_durations(const lock_trace_item_t *const data, const uint64_t n_records)
 {
-	durations_t d { 0 };
+	durations_t d;
 
 	std::map<pthread_mutex_t *, uint64_t> mutex_acquire_timestamp;
 
@@ -835,35 +852,63 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 		if (data[i].rc != 0)  // ignore failed calls
 			continue;
 
-		if (data[i].la == a_lock) {
-			d.mutex_lock_acquire_durations += data[i].lock_took;
-			d.mutex_lock_acquire_sd += data[i].lock_took * data[i].lock_took;
-			d.n_mutex_acquire_locks++;
+		const uint64_t took = data[i].lock_took;
 
-			mutex_acquire_timestamp.insert({ (pthread_mutex_t *)data[i].lock, data[i].timestamp });
+		if (data[i].la == a_lock) {
+			d.durations_mutex.mutex_lock_acquire_durations += took;
+			d.durations_mutex.mutex_lock_acquire_sd += took * took;
+			d.durations_mutex.n_mutex_acquire_locks++;
+
+			pthread_mutex_t *mutex_lock = (pthread_mutex_t *)data[i].lock;
+
+			mutex_acquire_timestamp.insert({ mutex_lock, data[i].timestamp });
+
+			auto it = d.per_mutex_durations.find(mutex_lock);
+			if (it == d.per_mutex_durations.end())
+				d.per_mutex_durations.insert({ mutex_lock, { took, 1, took * took } });
+			else {
+				it->second.mutex_lock_acquire_durations += took;
+				it->second.n_mutex_acquire_locks++;
+				it->second.mutex_lock_acquire_sd += took * took;
+			}
 		}
 		else if (data[i].la == a_unlock) {
 			auto lock_it = mutex_acquire_timestamp.find((pthread_mutex_t *)data[i].lock);
 
 			if (lock_it != mutex_acquire_timestamp.end()) {
-				uint64_t took = data[i].timestamp - lock_it->second;
+				uint64_t t_delta_took = data[i].timestamp - lock_it->second;
 
-				d.mutex_locked_durations += took;
-				d.n_mutex_locked_durations++;
-				d.mutex_locked_durations_sd += took * took;
+				d.locked_durations.mutex_locked_durations += t_delta_took;
+				d.locked_durations.n_mutex_locked_durations++;
+				d.locked_durations.mutex_locked_durations_sd += t_delta_took * t_delta_took;
 
 				mutex_acquire_timestamp.erase(lock_it);
+
+				pthread_mutex_t *mutex_lock = (pthread_mutex_t *)data[i].lock;
+
+				auto it = d.per_mutex_locked_durations.find(mutex_lock);
+				if (it == d.per_mutex_locked_durations.end())
+					d.per_mutex_locked_durations.insert({ mutex_lock, { t_delta_took, 1, t_delta_took * t_delta_took } });
+				else {
+					it->second.mutex_locked_durations += t_delta_took;
+					it->second.n_mutex_locked_durations++;
+					it->second.mutex_locked_durations_sd += t_delta_took * t_delta_took;
+				}
 			}
 		}
 		else if (data[i].la == a_r_lock) {
-			d.rwlock_r_lock_acquire_durations += data[i].lock_took;
-			d.rwlock_r_lock_acquire_sd += data[i].lock_took * data[i].lock_took;
-			d.n_rwlock_r_acquire_locks++;
+			d.durations_rwlock.rwlock_r_lock_acquire_durations += took;
+			d.durations_rwlock.rwlock_r_lock_acquire_sd += took * took;
+			d.durations_rwlock.n_rwlock_r_acquire_locks++;
+			// locked durations
+			// TODO per thread-callback
 		}
 		else if (data[i].la == a_w_lock) {
-			d.rwlock_w_lock_acquire_durations += data[i].lock_took;
-			d.rwlock_w_lock_acquire_sd += data[i].lock_took * data[i].lock_took;
-			d.n_rwlock_w_acquire_locks++;
+			d.durations_rwlock.rwlock_w_lock_acquire_durations += took;
+			d.durations_rwlock.rwlock_w_lock_acquire_sd += took * took;
+			d.durations_rwlock.n_rwlock_w_acquire_locks++;
+			// locked durations
+			// TODO per thread-callback
 		}
 	}
 
@@ -882,14 +927,14 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	fprintf(fh, "<table>\n");
 
 	// mutex acquisition durations
-	double avg_mutex_lock_acquire_durations = d.mutex_lock_acquire_durations / double(d.n_mutex_acquire_locks);
-	double sd_mutex_lock_acquire_durations = sqrt(d.mutex_lock_acquire_sd / double(d.n_mutex_acquire_locks) - pow(avg_mutex_lock_acquire_durations, 2.0));
+	double avg_mutex_lock_acquire_durations = d.durations_mutex.mutex_lock_acquire_durations / double(d.durations_mutex.n_mutex_acquire_locks);
+	double sd_mutex_lock_acquire_durations = sqrt(d.durations_mutex.mutex_lock_acquire_sd / double(d.durations_mutex.n_mutex_acquire_locks) - pow(avg_mutex_lock_acquire_durations, 2.0));
 	fprintf(fh, "<tr><th>mutex</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_lock_acquire_durations / 1000.0, sd_mutex_lock_acquire_durations / 1000.0);
 
 	// mutex held durations
-	double avg_mutex_locked_durations = d.mutex_locked_durations / double(d.n_mutex_locked_durations);
-	if (d.n_mutex_locked_durations > 1) {
-		double sd_mutex_locked_durations = sqrt(d.mutex_locked_durations_sd / double(d.n_mutex_locked_durations) - pow(avg_mutex_locked_durations, 2.0));
+	double avg_mutex_locked_durations = d.locked_durations.mutex_locked_durations / double(d.locked_durations.n_mutex_locked_durations);
+	if (d.locked_durations.n_mutex_locked_durations > 1) {
+		double sd_mutex_locked_durations = sqrt(d.locked_durations.mutex_locked_durations_sd / double(d.locked_durations.n_mutex_locked_durations) - pow(avg_mutex_locked_durations, 2.0));
 		fprintf(fh, "<tr><th>mutex held</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0, sd_mutex_locked_durations / 1000.0);
 	}
 	else {
@@ -897,15 +942,39 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	}
 
 	// read lock of r/w locks
-	double avg_rwlock_r_lock_acquire_durations = d.rwlock_r_lock_acquire_durations / double(d.n_rwlock_r_acquire_locks);
-	double sd_rwlock_r_lock_acquire_durations = sqrt(d.rwlock_r_lock_acquire_sd / double(d.n_rwlock_r_acquire_locks) - pow(avg_rwlock_r_lock_acquire_durations, 2.0));
+	double avg_rwlock_r_lock_acquire_durations = d.durations_rwlock.rwlock_r_lock_acquire_durations / double(d.durations_rwlock.n_rwlock_r_acquire_locks);
+	double sd_rwlock_r_lock_acquire_durations = sqrt(d.durations_rwlock.rwlock_r_lock_acquire_sd / double(d.durations_rwlock.n_rwlock_r_acquire_locks) - pow(avg_rwlock_r_lock_acquire_durations, 2.0));
 	fprintf(fh, "<tr><th>read lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_r_lock_acquire_durations / 1000.0, sd_rwlock_r_lock_acquire_durations / 1000.0);
 
 	// write lock of r/w locks
-	double avg_rwlock_w_lock_acquire_durations = d.rwlock_w_lock_acquire_durations / double(d.n_rwlock_w_acquire_locks);
-	double sd_rwlock_w_lock_acquire_durations = sqrt(d.rwlock_w_lock_acquire_sd / double(d.n_rwlock_w_acquire_locks) - pow(avg_rwlock_w_lock_acquire_durations, 2.0));
+	double avg_rwlock_w_lock_acquire_durations = d.durations_rwlock.rwlock_w_lock_acquire_durations / double(d.durations_rwlock.n_rwlock_w_acquire_locks);
+	double sd_rwlock_w_lock_acquire_durations = sqrt(d.durations_rwlock.rwlock_w_lock_acquire_sd / double(d.durations_rwlock.n_rwlock_w_acquire_locks) - pow(avg_rwlock_w_lock_acquire_durations, 2.0));
 	fprintf(fh, "<tr><th>write lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_w_lock_acquire_durations / 1000.0, sd_rwlock_w_lock_acquire_durations);
 
+	fprintf(fh, "</table>\n");
+
+	fprintf(fh, "<h3>per mutex durations</h3>\n");
+
+	fprintf(fh, "<h4>acquiration duration</h4>\n");
+	fprintf(fh, "<table>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>average</th><th>standard deviation</th></tr>\n");
+	for(auto entry : d.per_mutex_durations) {
+		double avg = entry.second.mutex_lock_acquire_durations / double(entry.second.n_mutex_acquire_locks);
+		double sd = sqrt(entry.second.mutex_lock_acquire_sd / double(entry.second.n_mutex_acquire_locks) - pow(avg, 2.0));
+
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+	}
+	fprintf(fh, "</table>\n");
+
+	fprintf(fh, "<h4>mutex held duration</h4>\n");
+	fprintf(fh, "<table>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>average</th><th>standard deviation</th></tr>\n");
+	for(auto entry : d.per_mutex_locked_durations) {
+		double avg = entry.second.mutex_locked_durations / double(entry.second.n_mutex_locked_durations);
+		double sd = sqrt(entry.second.mutex_locked_durations_sd / double(entry.second.n_mutex_locked_durations) - pow(avg, 2.0));
+
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+	}
 	fprintf(fh, "</table>\n");
 
 	fprintf(fh, "</section>\n");
