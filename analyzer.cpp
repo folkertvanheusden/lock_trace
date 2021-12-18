@@ -1,3 +1,7 @@
+// (C) 2021 by folkert@vanheusden.com
+// released under Apache license v2.0
+
+#include <assert.h>
 #include <error.h>
 #include <fcntl.h>
 #include <jansson.h>
@@ -647,7 +651,29 @@ std::string my_ctime(const uint64_t nts)
 	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, nts % billion);
 }
 
-void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core_file, const std::string & trace_file)
+std::map<std::string, uint64_t> data_stats(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	uint64_t cnts[_a_max] { 0 };
+
+	for(uint64_t i=0; i<n_records; i++)
+		cnts[data[i].la]++;
+
+	std::map<std::string, uint64_t> out;
+	out.insert({ "mutex locks", cnts[a_lock] });
+	out.insert({ "mutex unlocks", cnts[a_unlock] });
+	out.insert({ "pthread_clean", cnts[a_thread_clean] });
+	out.insert({ "rw read lock", cnts[a_r_lock] });
+	out.insert({ "rw write lock", cnts[a_w_lock] });
+	out.insert({ "rw unlock", cnts[a_rw_unlock] });
+	out.insert({ "mutex init", cnts[a_init] });
+	out.insert({ "mutex destroy", cnts[a_destroy] });
+	out.insert({ "rw init", cnts[a_rw_init] });
+	out.insert({ "rw destroy", cnts[a_rw_destroy] });
+
+	return out;
+}
+
+void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core_file, const std::string & trace_file, const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	fprintf(fh, "<h2 id=\"meta\">META DATA</h2>\n");
 	fprintf(fh, "<table><tr><th colspan=2>meta data</th></tr>\n");
@@ -658,10 +684,10 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 	fprintf(fh, "<tr><td>core file:</td><td>%s</td></tr>\n", core_file.c_str());
 	fprintf(fh, "<tr><td>trace file:</td><td>%s</td></tr>\n", trace_file.c_str());
 	double took = double(get_json_int(meta, "end_ts") - get_json_int(meta, "start_ts")) / billion;
-	uint64_t n_records = get_json_int(meta, "n_records");
-	uint64_t n_records_max = get_json_int(meta, "n_records_max");
-	double n_per_sec = took > 0 ? n_records / took: 0;
-	fprintf(fh, "<tr><td># trace records:</td><td>%ld (%.2f%%, %.2f%%/s)</td></tr>\n", n_records, n_records * 100.0 / n_records_max, n_per_sec * 100.0 / n_records_max);
+	uint64_t _n_records = get_json_int(meta, "n_records");
+	uint64_t _n_records_max = get_json_int(meta, "n_records_max");
+	double n_per_sec = took > 0 ? _n_records / took: 0;
+	fprintf(fh, "<tr><td># trace records:</td><td>%ld (%.2f%%, %.2f%%/s)</td></tr>\n", _n_records, _n_records * 100.0 / _n_records_max, n_per_sec * 100.0 / _n_records_max);
 	fprintf(fh, "<tr><td>fork warning:</td><td>%s</td></tr>\n", get_json_int(meta, "fork_warning") ? "true" : "false");
 	fprintf(fh, "<tr><td># cores:</td><td>%ld</td></tr>\n", get_json_int(meta, "n_procs"));
 	uint64_t start_ts = get_json_int(meta, "start_ts");
@@ -674,6 +700,12 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 	fprintf(fh, "<tr><td># rwlock try-timed-rdlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedrdlock"));
 	fprintf(fh, "<tr><td># rwlock try-wrlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_wrlock"));
 	fprintf(fh, "<tr><td># rwlock try-timed-rwlock</td><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedwrlock"));
+
+	assert(n_records == _n_records);
+	auto ds = data_stats(data, n_records);
+	for(auto ds_entry : ds)
+		fprintf(fh, "<tr><td>%s</td><td>%lu</td></tr>\n", ds_entry.first.c_str(), ds_entry.second);
+
 	fprintf(fh, "</table>\n");
 }
 
@@ -719,7 +751,7 @@ int main(int argc, char *argv[])
 
 	put_html_header(fh);
 
-	emit_meta_data(fh, meta, core_file, trace_file);
+	emit_meta_data(fh, meta, core_file, trace_file, data, n_records);
 
 	list_fuction_call_errors(fh, data, n_records);
 
