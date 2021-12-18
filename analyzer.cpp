@@ -23,14 +23,14 @@ std::string core_file;
 std::string myformat(const char *const fmt, ...)
 {
 	char *buffer = nullptr;
-        va_list ap;
+	va_list ap;
 
-        va_start(ap, fmt);
-        if (vasprintf(&buffer, fmt, ap) == -1) {
+	va_start(ap, fmt);
+	if (vasprintf(&buffer, fmt, ap) == -1) {
 		va_end(ap);
 		return "(?)";
 	}
-        va_end(ap);
+	va_end(ap);
 
 	std::string result = buffer;
 	free(buffer);
@@ -131,7 +131,7 @@ hash_t calculate_callback_hash(const void *const *const pointers, const size_t n
 typedef enum { lae_already_locked = 0, lae_not_locked, lae_not_owner } lock_action_error_t;
 constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner" };
 
-template<typename Type>
+	template<typename Type>
 void put_lock_error(std::map<std::pair<const Type *, lock_action_error_t>, std::map<hash_t, std::pair<size_t, int> > > *const target, const Type *const lock, const lock_action_error_t error_type, const hash_t calltrace_hash, const size_t record_nr)
 {
 	std::pair<const Type *, lock_action_error_t> key { lock, error_type };
@@ -343,17 +343,17 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 
 std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_trace_item_t *const data, const std::vector<size_t> & backtraces)
 {
-    std::map<hash_t, size_t> out;
+	std::map<hash_t, size_t> out;
 
-    for(auto i : backtraces) {
-        hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+	for(auto i : backtraces) {
+		hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
-        auto it = out.find(hash);
-        if (it == out.end())
-            out.insert({ hash, i });
-    }
+		auto it = out.find(hash);
+		if (it == out.end())
+			out.insert({ hash, i });
+	}
 
-    return out;
+	return out;
 }
 
 std::map<const pthread_mutex_t *, std::vector<size_t> > do_find_still_locked_mutex(const lock_trace_item_t *const data, const uint64_t n_records)
@@ -406,14 +406,14 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 	for(auto it : still_locked_list) {
 		fprintf(fh, "<heading><h3>mutex %p</h3></heading>\n", (const void *)it.first);
 
-        auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
+		auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
 
 		if (unique_backtraces.size() == 1)
 			fprintf(fh, "<p>The following location did not unlock:</p>\n");
 		else
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
-        for(auto entry : unique_backtraces) 
+		for(auto entry : unique_backtraces) 
 			put_record_details(fh, data[entry.second], "blue");
 	}
 
@@ -470,14 +470,14 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 	for(auto it : still_locked_list) {
 		fprintf(fh, "<heading><h3>rwlock %p</h3></heading>\n", (const void *)it.first);
 
-        auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
+		auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
 
 		if (unique_backtraces.size() == 1)
 			fprintf(fh, "<p>The following location did not unlock:</p>\n");
 		else
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
-        for(auto entry : unique_backtraces) 
+		for(auto entry : unique_backtraces) 
 			put_record_details(fh, data[entry.second], "magenta");
 	}
 
@@ -567,9 +567,9 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 
 					put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 				}
-                else {
-                    it->second.erase(tid_it);
-                }
+				else {
+					it->second.erase(tid_it);
+				}
 
 				if (it->second.empty())
 					w_locked.erase(it);
@@ -675,7 +675,7 @@ int main(int argc, char *argv[])
 
 	find_double_un_locks_rwlock(fh, data, n_records);
 
-    find_still_locked_rwlock(fh, data, n_records);
+	find_still_locked_rwlock(fh, data, n_records);
 
 	put_html_tail(fh);
 
