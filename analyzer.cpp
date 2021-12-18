@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <jansson.h>
 #include <map>
+#include <math.h>
 #include <set>
 #include <stdarg.h>
 #include <stdint.h>
@@ -703,6 +704,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<h2>table of contents</h2>\n");
 	fprintf(fh, "<ul>\n");
 	fprintf(fh, "<li><a href=\"#meta\">meta data</a>\n");
+	fprintf(fh, "<li><a href=\"#durations\">durations</a>\n");
 	fprintf(fh, "<li><a class=\"green\" href=\"#errors\">errors</a>\n");
 	fprintf(fh, "<li><a class=\"red\" href=\"#doublem\">double lock/unlock mutexes</a>\n");
 	fprintf(fh, "<li><a class=\"blue\" href=\"#stillm\">still locked mutexes</a>\n");
@@ -795,6 +797,66 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 	fprintf(fh, "</table>\n");
 }
 
+typedef struct {
+	uint64_t mutex_lock_acquire_durations, n_mutex_acquire_locks, mutex_lock_acquire_sd;
+	uint64_t rwlock_r_lock_acquire_durations, n_rwlock_r_acquire_locks, rwlock_r_lock_acquire_sd;
+	uint64_t rwlock_w_lock_acquire_durations, n_rwlock_w_acquire_locks, rwlock_w_lock_acquire_sd;
+} durations_t;
+
+durations_t do_determine_durations(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	durations_t d { 0 };
+
+	for(uint64_t i=0; i<n_records; i++) {
+		if (data[i].rc != 0)  // ignore failed calls
+			continue;
+
+		if (data[i].la == a_lock) {
+			d.mutex_lock_acquire_durations += data[i].lock_took;
+			d.mutex_lock_acquire_sd += data[i].lock_took * data[i].lock_took;
+			d.n_mutex_acquire_locks++;
+		}
+		else if (data[i].la == a_r_lock) {
+			d.rwlock_r_lock_acquire_durations += data[i].lock_took;
+			d.rwlock_r_lock_acquire_sd += data[i].lock_took * data[i].lock_took;
+			d.n_rwlock_r_acquire_locks++;
+		}
+		else if (data[i].la == a_w_lock) {
+			d.rwlock_w_lock_acquire_durations += data[i].lock_took;
+			d.rwlock_w_lock_acquire_sd += data[i].lock_took * data[i].lock_took;
+			d.n_rwlock_w_acquire_locks++;
+		}
+	}
+
+	return d;
+}
+
+void determine_durations(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	const auto & d = do_determine_durations(data, n_records);
+
+	fprintf(fh, "<article>\n");
+	fprintf(fh, "<heading><h2 id=\"durations\">acquire durations</h2></heading>\n");
+
+	fprintf(fh, "<table>\n");
+
+	double avg_mutex_lock_acquire_durations = d.mutex_lock_acquire_durations / double(d.n_mutex_acquire_locks);
+	double sd_mutex_lock_acquire_durations = sqrt(d.mutex_lock_acquire_sd / double(d.n_mutex_acquire_locks) - pow(avg_mutex_lock_acquire_durations, 2.0));
+	fprintf(fh, "<tr><td>mutex:</td><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_lock_acquire_durations / 1000.0, sd_mutex_lock_acquire_durations / 1000.0);
+
+	double avg_rwlock_r_lock_acquire_durations = d.rwlock_r_lock_acquire_durations / double(d.n_rwlock_r_acquire_locks);
+	double sd_rwlock_r_lock_acquire_durations = sqrt(d.rwlock_r_lock_acquire_sd / double(d.n_rwlock_r_acquire_locks) - pow(avg_rwlock_r_lock_acquire_durations, 2.0));
+	fprintf(fh, "<tr><td>read lock:</td><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_r_lock_acquire_durations / 1000.0, sd_rwlock_r_lock_acquire_durations / 1000.0);
+
+	double avg_rwlock_w_lock_acquire_durations = d.rwlock_w_lock_acquire_durations / double(d.n_rwlock_w_acquire_locks);
+	double sd_rwlock_w_lock_acquire_durations = sqrt(d.rwlock_w_lock_acquire_sd / double(d.n_rwlock_w_acquire_locks) - pow(avg_rwlock_w_lock_acquire_durations, 2.0));
+	fprintf(fh, "<tr><td>write lock:</td><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_w_lock_acquire_durations / 1000.0, sd_rwlock_w_lock_acquire_durations);
+
+	fprintf(fh, "</table>\n");
+
+	fprintf(fh, "</article>\n");
+}
+
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
@@ -838,6 +900,8 @@ int main(int argc, char *argv[])
 	put_html_header(fh);
 
 	emit_meta_data(fh, meta, core_file, trace_file, data, n_records);
+
+	determine_durations(fh, data, n_records);
 
 	list_fuction_call_errors(fh, data, n_records);
 
