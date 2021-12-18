@@ -349,12 +349,12 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 {
 	auto mutex_lock_mistakes = do_find_double_un_locks_mutex(data, n_records);
 
-	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"doublem\">4. mutex lock/unlock mistakes</h2></heading>\n");
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"doublem\">4. mutex lock/unlock mistakes</h2>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", mutex_lock_mistakes.size());
 
 	for(auto mutex_lock_mistake : mutex_lock_mistakes) {
-		fprintf(fh, "<heading><h3>mutex %p, type \"%s\"</h3></heading>\n", (const void *)mutex_lock_mistake.first.first, lock_action_error_str[mutex_lock_mistake.first.second]);
+		fprintf(fh, "<h3>mutex %p, type \"%s\"</h3>\n", (const void *)mutex_lock_mistake.first.first, lock_action_error_str[mutex_lock_mistake.first.second]);
 
 		for(auto map_entry : mutex_lock_mistake.second) {
 			double_un_lock_t & dul = map_entry.second;
@@ -379,7 +379,7 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 		}
 	}
 
-	fprintf(fh, "</article>\n");
+	fprintf(fh, "</section>\n");
 }
 
 std::map<int, std::vector<size_t> > do_list_fuction_call_errors(const lock_trace_item_t *const data, const uint64_t n_records)
@@ -404,18 +404,18 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 {
 	auto error_list = do_list_fuction_call_errors(data, n_records);
 
-	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"errors\">3. function call errors</h2></heading>\n");
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"errors\">3. function call errors</h2>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", error_list.size());
 
 	for(auto it : error_list) {
-		fprintf(fh, "<heading><h3>%s</h3></heading>\n", strerror(it.first));
+		fprintf(fh, "<h3>%s</h3>\n", strerror(it.first));
 
 		for(auto idx : it.second)
 			put_record_details(fh, data[idx], "green");
 	}
 
-	fprintf(fh, "</article>\n");
+	fprintf(fh, "</section>\n");
 }
 
 std::map<const pthread_mutex_t *, std::vector<size_t> > do_find_still_locked_mutex(const lock_trace_item_t *const data, const uint64_t n_records)
@@ -465,12 +465,12 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 {
 	auto still_locked_list = do_find_still_locked_mutex(data, n_records);
 
-	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"stillm\">5. still locked mutexes</h2></heading>\n");
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"stillm\">5. still locked mutexes</h2>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", still_locked_list.size());
 
 	for(auto it : still_locked_list) {
-		fprintf(fh, "<heading><h3>mutex %p</h3></heading>\n", (const void *)it.first);
+		fprintf(fh, "<h3>mutex %p</h3>\n", (const void *)it.first);
 
 		auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
 
@@ -483,7 +483,7 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 			put_record_details(fh, data[entry.second], "blue");
 	}
 
-	fprintf(fh, "</article>\n");
+	fprintf(fh, "</section>\n");
 }
 
 std::map<const pthread_rwlock_t *, std::vector<size_t> > do_find_still_locked_rwlock(const lock_trace_item_t *const data, const uint64_t n_records)
@@ -533,12 +533,12 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 {
 	auto still_locked_list = do_find_still_locked_rwlock(data, n_records);
 
-	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"stillrw\">7. still locked rwlocks</h2></heading>\n");
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"stillrw\">7. still locked rwlocks</h2>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", still_locked_list.size());
 
 	for(auto it : still_locked_list) {
-		fprintf(fh, "<heading><h3>rwlock %p</h3></heading>\n", (const void *)it.first);
+		fprintf(fh, "<h3>rwlock %p</h3>\n", (const void *)it.first);
 
 		auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
 
@@ -551,7 +551,7 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 			put_record_details(fh, data[entry.second], "magenta");
 	}
 
-	fprintf(fh, "</article>\n");
+	fprintf(fh, "</section>\n");
 }
 
 // see do_find_double_un_locks_mutex comment about false positives
@@ -658,13 +658,13 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 {
 	auto rw_lock_mistakes = do_find_double_un_locks_rwlock(data, n_records);
 
-	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"doublerw\">6. r/w-lock lock/unlock mistakes</h2></heading>\n");
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"doublerw\">6. r/w-lock lock/unlock mistakes</h2>\n");
 	fprintf(fh, "<p>Count: %zu</p>\n", rw_lock_mistakes.size());
 
 	// go through all mutexes for which a mistake was made
 	for(auto rwlock_lock_mistake : rw_lock_mistakes) {
-		fprintf(fh, "<heading><h3>r/w-lock %p, type \"%s\"</h3></heading>\n", (const void *)rwlock_lock_mistake.first.first, lock_action_error_str[rwlock_lock_mistake.first.second]);
+		fprintf(fh, "<h3>r/w-lock %p, type \"%s\"</h3>\n", (const void *)rwlock_lock_mistake.first.first, lock_action_error_str[rwlock_lock_mistake.first.second]);
 
 		// go through every combination (lock + unlocks)
 		for(auto map_entry : rwlock_lock_mistake.second) {
@@ -691,13 +691,13 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 		fprintf(fh, "<br>\n");
 	}
 
-	fprintf(fh, "</article>\n");
+	fprintf(fh, "</section>\n");
 }
 
 void put_html_header(FILE *const fh)
 {
 	fprintf(fh, "<!DOCTYPE html>\n<html><head>\n");
-	fprintf(fh, "<style>table{font-size:16px;font-family:\"Trebuchet MS\",Arial,Helvetica,sans-serif;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{font-family:monospace;margin-top:2.2em;}</style>\n");
+	fprintf(fh, "<style>thead th { background: #ffb0b0}table{font-size:16px;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{margin-top:2.2em;}</style>\n");
 	fprintf(fh, "<title>lock trace</title></head><body>\n");
 	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
 
@@ -715,7 +715,7 @@ void put_html_header(FILE *const fh)
 
 void put_html_tail(FILE *const fh)
 {
-	fprintf(fh, "<p><br><br></p><hr><font size=-1>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</font></body></html>\n");
+	fprintf(fh, "<p><br><br></p><hr><footer>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</footer></body></html>\n");
 }
 
 std::string get_json_string(const json_t *const js, const char *const key)
@@ -853,10 +853,10 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 {
 	const auto & d = do_determine_durations(data, n_records);
 
-	fprintf(fh, "<article>\n");
-	fprintf(fh, "<heading><h2 id=\"durations\">2. acquire durations</h2></heading>\n");
+	fprintf(fh, "<section>\n");
 
 	fprintf(fh, "<table>\n");
+	fprintf(fh, "<caption><h2 id=\"durations\">2. acquire durations</h2></caption>\n");
 
 	// mutex acquisition durations
 	double avg_mutex_lock_acquire_durations = d.mutex_lock_acquire_durations / double(d.n_mutex_acquire_locks);
@@ -885,7 +885,7 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 
 	fprintf(fh, "</table>\n");
 
-	fprintf(fh, "</article>\n");
+	fprintf(fh, "</section>\n");
 }
 
 int main(int argc, char *argv[])
