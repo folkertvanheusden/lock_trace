@@ -414,8 +414,11 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	for(auto it : error_list) {
 		fprintf(fh, "<h3>%s</h3>\n", strerror(it.first));
 
-		for(auto idx : it.second)
+		for(auto idx : it.second) {
 			put_record_details(fh, data[idx], "green");
+
+			fprintf(fh, "<br>\n");
+		}
 	}
 
 	fprintf(fh, "</section>\n");
@@ -483,8 +486,11 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 		else
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
-		for(auto entry : unique_backtraces) 
+		for(auto entry : unique_backtraces) {
 			put_record_details(fh, data[entry.second], "blue");
+
+			fprintf(fh, "<br>\n");
+		}
 	}
 
 	fprintf(fh, "</section>\n");
@@ -552,8 +558,11 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 		else
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
-		for(auto entry : unique_backtraces) 
+		for(auto entry : unique_backtraces) {
 			put_record_details(fh, data[entry.second], "magenta");
+
+			fprintf(fh, "<br>\n");
+		}
 	}
 
 	fprintf(fh, "</section>\n");
@@ -693,9 +702,9 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 				for(auto entry : unique_backtraces) 
 					put_record_details(fh, data[entry.second], "yellow");
 			}
-		}
 
-		fprintf(fh, "<br>\n");
+			fprintf(fh, "<br>\n");
+		}
 	}
 
 	fprintf(fh, "</section>\n");
