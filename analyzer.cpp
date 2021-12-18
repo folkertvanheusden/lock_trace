@@ -170,6 +170,10 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 		const pthread_mutex_t *const mutex = (const pthread_mutex_t *)data[i].lock;
 		const pid_t tid = data[i].tid;
 
+		// ignore calls that failed
+		if (data[i].rc != 0)
+			continue;
+
 		if (data[i].la == a_lock) {
 			// see if it is already locked by current 'tid' which is a mistake
 			auto it = locked.find(mutex);
@@ -368,6 +372,10 @@ std::map<const pthread_mutex_t *, std::vector<size_t> > do_find_still_locked_mut
 	std::map<const pthread_mutex_t *, std::vector<size_t> > mutexes_where;
 
 	for(size_t i=0; i<n_records; i++) {
+		// ignore calls that failed
+		if (data[i].rc != 0)
+			continue;
+
 		const pthread_mutex_t *const mutex = (const pthread_mutex_t *)data[i].lock;
 
 		if (data[i].la == a_lock) {
@@ -432,6 +440,10 @@ std::map<const pthread_rwlock_t *, std::vector<size_t> > do_find_still_locked_rw
 	std::map<const pthread_rwlock_t *, std::vector<size_t> > rwlockes_where;
 
 	for(size_t i=0; i<n_records; i++) {
+		// ignore calls that failed
+		if (data[i].rc != 0)
+			continue;
+
 		const pthread_rwlock_t *const rwlock = (const pthread_rwlock_t *)data[i].lock;
 
 		if (data[i].la == a_r_lock || data[i].la == a_w_lock) {
@@ -498,6 +510,10 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 	std::map<const pthread_rwlock_t *, std::set<pid_t> > w_locked;
 
 	for(size_t i=0; i<n_records; i++) {
+		// ignore calls that failed
+		if (data[i].rc != 0)
+			continue;
+
 		const pthread_rwlock_t *const rwlock = (const pthread_rwlock_t *)data[i].lock;
 		const pid_t tid = data[i].tid;
 
@@ -653,22 +669,33 @@ std::string my_ctime(const uint64_t nts)
 
 std::map<std::string, uint64_t> data_stats(const lock_trace_item_t *const data, const uint64_t n_records)
 {
-	uint64_t cnts[_a_max] { 0 };
+	uint64_t cnts[_a_max][2] { { 0, 0 } };
 
 	for(uint64_t i=0; i<n_records; i++)
-		cnts[data[i].la]++;
+		cnts[data[i].la][!!data[i].rc]++;
 
 	std::map<std::string, uint64_t> out;
-	out.insert({ "mutex locks", cnts[a_lock] });
-	out.insert({ "mutex unlocks", cnts[a_unlock] });
-	out.insert({ "pthread_clean", cnts[a_thread_clean] });
-	out.insert({ "rw read lock", cnts[a_r_lock] });
-	out.insert({ "rw write lock", cnts[a_w_lock] });
-	out.insert({ "rw unlock", cnts[a_rw_unlock] });
-	out.insert({ "mutex init", cnts[a_init] });
-	out.insert({ "mutex destroy", cnts[a_destroy] });
-	out.insert({ "rw init", cnts[a_rw_init] });
-	out.insert({ "rw destroy", cnts[a_rw_destroy] });
+	out.insert({ "mutex locks", cnts[a_lock][0] });
+	out.insert({ "mutex unlocks", cnts[a_unlock][0] });
+	out.insert({ "pthread_clean", cnts[a_thread_clean][0] });
+	out.insert({ "rw read lock", cnts[a_r_lock][0] });
+	out.insert({ "rw write lock", cnts[a_w_lock][0] });
+	out.insert({ "rw unlock", cnts[a_rw_unlock][0] });
+	out.insert({ "mutex init", cnts[a_init][0] });
+	out.insert({ "mutex destroy", cnts[a_destroy][0] });
+	out.insert({ "rw init", cnts[a_rw_init][0] });
+	out.insert({ "rw destroy", cnts[a_rw_destroy][0] });
+
+	out.insert({ "failed mutex locks", cnts[a_lock][1] });
+	out.insert({ "failed mutex unlocks", cnts[a_unlock][1] });
+	out.insert({ "failed pthread_clean", cnts[a_thread_clean][1] });
+	out.insert({ "failed rw read lock", cnts[a_r_lock][1] });
+	out.insert({ "failed rw write lock", cnts[a_w_lock][1] });
+	out.insert({ "failed rw unlock", cnts[a_rw_unlock][1] });
+	out.insert({ "failed mutex init", cnts[a_init][1] });
+	out.insert({ "failed mutex destroy", cnts[a_destroy][1] });
+	out.insert({ "failed rw init", cnts[a_rw_init][1] });
+	out.insert({ "failed rw destroy", cnts[a_rw_destroy][1] });
 
 	return out;
 }
