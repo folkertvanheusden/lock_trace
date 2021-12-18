@@ -13,6 +13,8 @@
 
 #define TIME 100000
 
+pthread_mutex_t test = PTHREAD_MUTEX_INITIALIZER;
+
 uint64_t get_us()
 {
         struct timespec tp = { 0, 0 };
@@ -75,6 +77,10 @@ void test_mutex()
 	pthread_create(&th, NULL, thread, &mutex);
 
 	lock_unlock(&mutex);
+
+	pthread_mutex_lock(&test); /* test lock */
+	pthread_mutex_unlock(&test); /* test double unlock */
+	pthread_mutex_unlock(&test); /* test double unlock */
 
 	pthread_mutex_lock(&mutex); /* test double lock */
 

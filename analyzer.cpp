@@ -245,7 +245,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 
 std::map<const void *, std::string> symbol_cache;
 
-std::string lookup_symbol(const void *const p)
+std::string lookup_symbol(const void *const p, const bool both=false)
 {
 	if (p == nullptr)
 		return "(nil)";
@@ -254,14 +254,22 @@ std::string lookup_symbol(const void *const p)
 	if (it != symbol_cache.end())
 		return it->second;
 
-	std::string command_line = myformat("%s --core %s %p", resolver.c_str(), core_file.c_str(), p);
+	std::string command_line = myformat("%s -x --core %s %p", resolver.c_str(), core_file.c_str(), p);
 
 	char buffer[4096] { 0x00 };
 
 	FILE *fh = popen(command_line.c_str(), "r");
 	if (fh) {
-		if (!fgets(buffer, sizeof buffer - 1, fh))
+		if (fread(buffer, 1, sizeof buffer - 1, fh) == 0)
 			buffer[0] = 0x00;
+
+		for(;;) {
+			char *lf = strchr(buffer, '\n');
+			if (!lf)
+				break;
+
+			*lf = '/';
+		}
 
 		pclose(fh);
 	}
@@ -275,8 +283,10 @@ std::string lookup_symbol(const void *const p)
 
 	std::string result = buffer;
 
-	if (result == "??:0" || result == "")
-		result = myformat("%p:-1:-1", p);
+	if (result.substr(0, 2) == "??" || result == "")
+		result = myformat("%p", p);
+	else if (both)
+		result = myformat("%s %p", buffer, p);
 
 	symbol_cache.insert({ p, result });
 
@@ -962,7 +972,7 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 		double avg = entry.second.mutex_lock_acquire_durations / double(entry.second.n_mutex_acquire_locks);
 		double sd = sqrt(entry.second.mutex_lock_acquire_sd / double(entry.second.n_mutex_acquire_locks) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first, true).c_str(), avg, sd);
 	}
 	fprintf(fh, "</table>\n");
 
@@ -973,7 +983,7 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 		double avg = entry.second.mutex_locked_durations / double(entry.second.n_mutex_locked_durations);
 		double sd = sqrt(entry.second.mutex_locked_durations_sd / double(entry.second.n_mutex_locked_durations) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first, true).c_str(), avg, sd);
 	}
 	fprintf(fh, "</table>\n");
 
