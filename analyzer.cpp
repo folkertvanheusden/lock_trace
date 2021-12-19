@@ -135,7 +135,7 @@ hash_t calculate_callback_hash(const void *const *const pointers, const size_t n
 // lae_not_locked: unlock without lock
 // lae_not_owner: other thread unlocks mutex
 typedef enum { lae_already_locked = 0, lae_not_locked, lae_not_owner } lock_action_error_t;
-constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner" };
+constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner (or not waiting for (r/w-lock))" };
 
 typedef struct {
 	std::vector<size_t> latest_records;
@@ -177,7 +177,6 @@ void put_lock_error(std::map<std::pair<const Type *, lock_action_error_t>, std::
 // this may give false positives if for example an other mutex is malloced()/new'd
 // over the location of a previously unlocked mutex
 typedef struct {
-	size_t first_locker;
 	std::set<pid_t> tids;
 } lock_record_t;
 
@@ -532,6 +531,8 @@ std::map<const pthread_rwlock_t *, std::vector<size_t> > do_find_still_locked_rw
 			}
 		}
 		else if (data[i].la == a_rw_unlock) {
+			// here it is not important if it is the r or
+			// the w lock, as long as the count matches up
 			auto it = rwlocks_counts.find(rwlock);
 
 			if (it != rwlocks_counts.end()) {
@@ -631,46 +632,47 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 		}
 		else if (data[i].la == a_rw_unlock) {
 			// see if it is not locked (mistake)
-			auto it = w_locked.find(rwlock);
-			if (it == w_locked.end()) {
+			auto w_it = w_locked.find(rwlock);
+			if (w_it == w_locked.end()) {
 				// check r_locked
 
-				auto it = r_locked.find(rwlock);
-				if (it == r_locked.end()) {
+				auto r_it = r_locked.find(rwlock);
+				if (r_it == r_locked.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_not_locked, hash, i);
 				}
 				// see if it is not locked by current tid (mistake)
 				else {
-					auto tid_it = it->second.find(tid);
-					if (tid_it == it->second.end()) {
+					auto tid_it = r_it->second.find(tid);
+					if (tid_it == r_it->second.end()) {
 						hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
 						put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 					}
 					else {
-						it->second.erase(tid_it);
+						r_it->second.erase(tid_it);
 					}
 
-					if (it->second.empty())
-						r_locked.erase(it);
+					if (r_it->second.empty())
+						r_locked.erase(r_it);
 				}
 			}
 			// see if it is not locked by current tid (mistake)
+			// that is: not locked or waiting to acquire the w-lock
 			else {
-				auto tid_it = it->second.find(tid);
-				if (tid_it == it->second.end()) {
+				auto tid_it = w_it->second.find(tid);
+				if (tid_it == w_it->second.end()) {
 					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 				}
 				else {
-					it->second.erase(tid_it);
+					w_it->second.erase(tid_it);
 				}
 
-				if (it->second.empty())
-					w_locked.erase(it);
+				if (w_it->second.empty())
+					w_locked.erase(w_it);
 			}
 		}
 	}
@@ -752,7 +754,7 @@ std::string get_json_string(const json_t *const js, const char *const key)
 	return json_string_value(json_object_get(js, key));
 }
 
-uint64_t get_json_int(const json_t *const js, const char *const key)
+int64_t get_json_int(const json_t *const js, const char *const key)
 {
 	return json_integer_value(json_object_get(js, key));
 }
@@ -804,7 +806,7 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 	uint64_t _n_records = get_json_int(meta, "n_records");
 	uint64_t _n_records_max = get_json_int(meta, "n_records_max");
 	double n_per_sec = took > 0 ? _n_records / took: 0;
-	fprintf(fh, "<tr><th># trace records</th><td>%ld (%.2f%%, %.2f%%/s)</td></tr>\n", _n_records, _n_records * 100.0 / _n_records_max, n_per_sec * 100.0 / _n_records_max);
+	fprintf(fh, "<tr><th># trace records</th><td>%lu (%.2f%%, %.2f%%/s)</td></tr>\n", _n_records, _n_records * 100.0 / _n_records_max, n_per_sec * 100.0 / _n_records_max);
 	fprintf(fh, "<tr><th>fork warning</th><td>%s</td></tr>\n", get_json_int(meta, "fork_warning") ? "true" : "false");
 	fprintf(fh, "<tr><th># cores</th><td>%ld</td></tr>\n", get_json_int(meta, "n_procs"));
 	uint64_t start_ts = get_json_int(meta, "start_ts");
@@ -855,6 +857,9 @@ typedef struct {
 durations_t do_determine_durations(const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	durations_t d;
+	d.durations_mutex = { 0 };
+	d.locked_durations = { 0 };
+	d.durations_rwlock = { 0 };
 
 	std::map<pthread_mutex_t *, uint64_t> mutex_acquire_timestamp;
 

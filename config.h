@@ -24,7 +24,8 @@
 #define USE_CLOCK CLOCK_REALTIME
 #define MEASURE_TIMING
 
-// these are at run-time and cause a small delay
+// these are at run-time and cause a small delay (unless
+// triggered, then the delay is more significant due to printf)
 //#define MUTEX_SANITY_CHECKS
 //#define RWLOCK_SANITY_CHECKS
 
