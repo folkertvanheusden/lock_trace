@@ -245,7 +245,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 
 std::map<const void *, std::string> symbol_cache;
 
-std::string lookup_symbol(const void *const p, const bool both=false)
+std::string lookup_symbol(const void *const p)
 {
 	if (p == nullptr)
 		return "(nil)";
@@ -254,7 +254,7 @@ std::string lookup_symbol(const void *const p, const bool both=false)
 	if (it != symbol_cache.end())
 		return it->second;
 
-	std::string command_line = myformat("%s -x --core %s %p", resolver.c_str(), core_file.c_str(), p);
+	std::string command_line = myformat("%s -x -a -C --core %s %p", resolver.c_str(), core_file.c_str(), p);
 
 	char buffer[4096] { 0x00 };
 
@@ -285,8 +285,6 @@ std::string lookup_symbol(const void *const p, const bool both=false)
 
 	if (result.substr(0, 2) == "??" || result == "")
 		result = myformat("%p", p);
-	else if (both)
-		result = myformat("%s %p", buffer, p);
 
 	symbol_cache.insert({ p, result });
 
@@ -325,7 +323,9 @@ void put_record_details(FILE *const fh, const lock_trace_item_t & record, const 
 {
 	fprintf(fh, "<table class=\"%s\">\n", base_color.c_str());
 	fprintf(fh, "<tr><th>tid</th><td>%d</td></tr>\n", record.tid);
+#ifdef STORE_THREAD_NAME
 	fprintf(fh, "<tr><th>thread name</th><td>%s</td></tr>\n", record.thread_name);
+#endif
 #ifdef MEASURE_TIMING
 	fprintf(fh, "<tr><th>timestamp</th><td>%s</td></tr>\n", my_ctime(record.timestamp).c_str());
 	fprintf(fh, "<tr><th>took</th><td>%.3fus</td></tr>\n", record.lock_took / 1000.0);
@@ -741,6 +741,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"blue\" href=\"#stillm\">still locked mutexes</a>\n");
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
+	fprintf(fh, "<li><a class=\"green\" href=\"#whereused\">where are locks used</a>\n");
 	fprintf(fh, "</ol>\n");
 
 	fprintf(fh, "<p>The \"tid\" is the thread identifier of the thread that triggered a measurement.</p>\n");
@@ -981,7 +982,7 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 		double avg = entry.second.mutex_lock_acquire_durations / double(entry.second.n_mutex_acquire_locks);
 		double sd = sqrt(entry.second.mutex_lock_acquire_sd / double(entry.second.n_mutex_acquire_locks) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first, true).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
 	}
 	fprintf(fh, "</table>\n");
 
@@ -992,7 +993,70 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 		double avg = entry.second.mutex_locked_durations / double(entry.second.n_mutex_locked_durations);
 		double sd = sqrt(entry.second.mutex_locked_durations_sd / double(entry.second.n_mutex_locked_durations) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first, true).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+	}
+	fprintf(fh, "</table>\n");
+
+	fprintf(fh, "</section>\n");
+}
+
+const void *find_caller_locker_addr(const void *const addr, const void *const *const backtrace)
+{
+	for(int i=0; i<CALLER_DEPTH - 1; i++) {
+		if (backtrace[i] == addr)
+			return backtrace[i + 1];
+	}
+
+	return backtrace[0];
+}
+
+// lock, backtrace
+std::map<const void *, std::set<const void *> > do_where_are_locks_used(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	std::map<const void *, std::set<const void *> > out;
+
+	for(uint64_t i=0; i<n_records; i++) {
+		if (data[i].rc != 0)  // ignore failed calls
+			continue;
+
+		const void *addr = nullptr;
+
+		if (data[i].la == a_lock)
+			addr = find_caller_locker_addr((void *)pthread_mutex_lock, data[i].caller);
+		else if (data[i].la == a_r_lock)
+			addr = find_caller_locker_addr((void *)pthread_rwlock_rdlock, data[i].caller);
+		else if (data[i].la == a_w_lock)
+			addr = find_caller_locker_addr((void *)pthread_rwlock_wrlock, data[i].caller);
+
+		if (addr) {
+			auto it = out.find(addr);
+			if (it == out.end())
+				out.insert({ data[i].lock, { addr } });
+			else
+				it->second.insert(addr);
+		}
+	}
+
+	return out;
+}
+
+void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto lock_use_locations = do_where_are_locks_used(data, n_records);
+
+	fprintf(fh, "<section>\n");
+
+	fprintf(fh, "<h2 id=\"whereused\">8. where are locks used</h2>\n");
+	fprintf(fh, "<table class=\"green\">\n");
+	for(auto & entry : lock_use_locations) {
+		fprintf(fh, "<tr><td>%s</td><td>\n", lookup_symbol(entry.first).c_str());
+
+		fprintf(fh, "<table>\n");
+		for(const auto & p : entry.second)
+			fprintf(fh, "<tr><td>%s</td></tr>\n", lookup_symbol(p).c_str());
+		fprintf(fh, "</table>\n");
+
+		fprintf(fh, "</td></tr>\n");
 	}
 	fprintf(fh, "</table>\n");
 
@@ -1110,6 +1174,8 @@ int main(int argc, char *argv[])
 	find_double_un_locks_rwlock(fh, data, n_records);
 
 	find_still_locked_rwlock(fh, data, n_records);
+
+	where_are_locks_used(fh, data, n_records);
 
 	do_correlate(data, n_records);
 
