@@ -135,7 +135,7 @@ hash_t calculate_callback_hash(const void *const *const pointers, const size_t n
 // lae_not_locked: unlock without lock
 // lae_not_owner: other thread unlocks mutex
 typedef enum { lae_already_locked = 0, lae_not_locked, lae_not_owner } lock_action_error_t;
-constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner" };
+constexpr const char *const lock_action_error_str[] = { "already locked", "not locked", "not owner (or not waiting for (r/w-lock))" };
 
 typedef struct {
 	std::vector<size_t> latest_records;
@@ -532,6 +532,8 @@ std::map<const pthread_rwlock_t *, std::vector<size_t> > do_find_still_locked_rw
 			}
 		}
 		else if (data[i].la == a_rw_unlock) {
+			// here it is not important if it is the r or
+			// the w lock, as long as the count matches up
 			auto it = rwlocks_counts.find(rwlock);
 
 			if (it != rwlocks_counts.end()) {
@@ -658,6 +660,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 				}
 			}
 			// see if it is not locked by current tid (mistake)
+			// that is: not locked or waiting to acquire the w-lock
 			else {
 				auto tid_it = it->second.find(tid);
 				if (tid_it == it->second.end()) {
