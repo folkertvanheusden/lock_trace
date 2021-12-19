@@ -1,9 +1,12 @@
 // (C) 2021 by folkert@vanheusden.com
 // released under Apache license v2.0
 
+#include <algorithm>
 #include <assert.h>
+#include <cfloat>
 #include <error.h>
 #include <fcntl.h>
+#include <gvc.h>
 #include <jansson.h>
 #include <map>
 #include <math.h>
@@ -741,6 +744,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"green\" href=\"#whereused\">where are locks used</a>\n");
+	fprintf(fh, "<li><a href=\"#corr\">correlations between locks</a>\n");
 	fprintf(fh, "</ol>\n");
 
 	fprintf(fh, "<p>The \"tid\" is the thread identifier of the thread that triggered a measurement.</p>\n");
@@ -1064,6 +1068,171 @@ void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, c
 	fprintf(fh, "</section>\n");
 }
 
+std::pair<std::vector<std::pair<std::pair<const void *, const void *>, uint64_t> >, std::map<const void *, uint64_t> > do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	// how often is mutex/rwlock A locked while B is also locked
+	std::map<std::pair<const void *, const void *>, uint64_t> counts;
+
+	// how many instances are waiting for this lock (including the
+	// one holding it)
+	std::map<const void *, int> locked;
+
+	std::map<const void *, uint64_t> seen_count;
+
+	for(size_t i=0; i<n_records; i++) {
+		// ignore calls that failed
+		if (data[i].rc != 0)
+			continue;
+
+		bool do_count = false;
+
+		if (data[i].la == a_r_lock || data[i].la == a_w_lock || data[i].la == a_lock) {
+			auto it = locked.find(data[i].lock);
+
+			if (it == locked.end())
+				locked.insert({ data[i].lock, 1 });
+			else
+				it->second++;
+
+			auto it_seen = seen_count.find(data[i].lock);
+			if (it_seen == seen_count.end())
+				seen_count.insert({ data[i].lock, 1 });
+			else
+				it_seen->second++;
+
+			do_count = true;
+		}
+		else if (data[i].la == a_rw_unlock || data[i].la == a_unlock) {
+			auto it = locked.find(data[i].lock);
+
+			if (it == locked.end())
+				locked.insert({ data[i].lock, 1 });
+			else if (it->second > 0)  // here we ignore any errors
+				it->second--;
+
+			do_count = true;
+		}
+
+		if (do_count) {
+			for(auto ait : locked) {
+				for(auto bit : locked) {
+					const void *a = ait.first;
+					const void *b = bit.first;
+					if (a == b)
+						continue;
+
+					if (a > b)
+						std::swap(a, b);
+
+					std::pair<const void *, const void *> key { a, b };
+
+					auto it = counts.find(key);
+					if (it == counts.end())
+						counts.insert({ key, 1 });
+					else
+						it->second++;
+				}
+			}
+		}
+	}
+
+	std::vector<std::pair<std::pair<const void *, const void *>, uint64_t> > v;
+	for(auto map_entry : counts)
+		v.push_back(map_entry);
+
+	return { v, seen_count };
+}
+
+void render_dot(FILE *const in, FILE *const out)
+{
+	GVC_t * gvc = gvContext();
+
+	Agraph_t *g = agread(in, 0);
+
+	gvLayout(gvc, g, "dot");
+
+	gvRender(gvc, g, "svg", out);
+
+	gvFreeLayout(gvc, g);
+	agclose(g);
+	gvFreeContext(gvc);
+}
+
+void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto pair = do_correlate(data, n_records);
+	auto v = pair.first;
+	auto seen_count = pair.second;
+
+	std::sort(v.begin(), v.end(), [=](std::pair<std::pair<const void *, const void *>, uint64_t> & a, std::pair<std::pair<const void *, const void *>, uint64_t> & b) {
+	    return a.second > b.second;
+	});
+
+	std::vector<std::pair<std::pair<const void *, const void *>, double> > v2;
+
+	double lowest = DBL_MAX, highest = DBL_MIN;
+
+	for(auto v_entry : v) {
+		uint64_t first_seen = seen_count.find(v_entry.first.first)->second;
+		uint64_t second_seen = seen_count.find(v_entry.first.second)->second;
+		uint64_t min_ = std::max(first_seen, second_seen);
+
+		double closeness = double(v_entry.second) / min_;
+
+		highest = std::max(highest, closeness);
+		lowest = std::min(lowest, closeness);
+
+		v2.push_back({ v_entry.first, closeness });
+	}
+
+	std::sort(v2.begin(), v2.end(), [=](std::pair<std::pair<const void *, const void *>, double> & a, std::pair<std::pair<const void *, const void *>, double> & b) {
+	    return a.second > b.second;
+	});
+
+	char *dot_script = nullptr;
+	size_t dot_script_len = 0;
+	FILE *dot_script_fh = open_memstream(&dot_script, &dot_script_len);
+
+	fprintf(dot_script_fh, "graph {\n");
+
+	int nr = 0;
+	for(auto v_entry : v2) {
+		double gradient = (v_entry.second - lowest) / (highest - lowest);
+		uint8_t red = 255 * gradient, blue = 255 * (1.0 - gradient);
+
+		// printf("%p,%p: %f - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, gradient);
+
+		fprintf(dot_script_fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0xa0, blue);
+
+		// arbitrary value chosen to keep the .dot-file output readable
+		if (++nr > 75)
+			break;
+	}
+
+	fprintf(dot_script_fh, "}\n");
+
+	fseek(dot_script_fh, 0, SEEK_SET);
+
+	char *svg_script = nullptr;
+	size_t svg_script_len = 0;
+	FILE *svg_script_fh = open_memstream(&svg_script, &svg_script_len);
+
+	render_dot(dot_script_fh, svg_script_fh);
+
+	fclose(dot_script_fh);
+	free(dot_script);
+
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"corr\">9. which locks might be correlated</h2>\n");
+	fprintf(fh, "<svg width=1024 height=768>\n");
+	fwrite(svg_script, 1, svg_script_len, fh);
+	fprintf(fh, "</svg>\n");
+	fprintf(fh, "</section>\n");
+
+	fclose(svg_script_fh);
+	free(svg_script);
+}
+
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
@@ -1121,6 +1290,8 @@ int main(int argc, char *argv[])
 	find_still_locked_rwlock(fh, data, n_records);
 
 	where_are_locks_used(fh, data, n_records);
+
+	correlate(fh, data, n_records);
 
 	put_html_tail(fh);
 
