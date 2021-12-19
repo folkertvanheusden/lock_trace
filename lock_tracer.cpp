@@ -691,7 +691,7 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	if (enforce_error_check)
 		fprintf(stderr, "Replacing all mutexes by error-checking mutexes\n");
 
-	fprintf(stderr, "Tracing max. %zu records\n", n_records);
+	fprintf(stderr, "Tracing max. %lu records\n", n_records);
 
 	asprintf(&data_filename, "measurements-%d.dat", getpid());
 
@@ -717,7 +717,7 @@ void __attribute__ ((constructor)) start_lock_tracing()
 #endif
 
 	if (items == MAP_FAILED) {
-		fprintf(stderr, "ERROR: cannot allocate %lu bytes of memory (reduce with the \"TRACE_N_RECORDS\" environment variable): %s\n", length, strerror(errno));
+		fprintf(stderr, "ERROR: cannot allocate %zu bytes of memory (reduce with the \"TRACE_N_RECORDS\" environment variable): %s\n", length, strerror(errno));
 		color("\033[0m");
 		_exit(1);
 	}
