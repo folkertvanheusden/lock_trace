@@ -3,6 +3,7 @@ extraction:
     prepare:
       packages:
         - libjansson-dev
+        - libgraphviz-dev
     configure:
       command:
         - mkdir _lgtm_build_dir
