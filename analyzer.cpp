@@ -6,6 +6,7 @@
 #include <cfloat>
 #include <error.h>
 #include <fcntl.h>
+#include <gvc.h>
 #include <jansson.h>
 #include <map>
 #include <math.h>
@@ -743,6 +744,7 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"green\" href=\"#whereused\">where are locks used</a>\n");
+	fprintf(fh, "<li><a href=\"#corr\">correlations between locks</a>\n");
 	fprintf(fh, "</ol>\n");
 
 	fprintf(fh, "<p>The \"tid\" is the thread identifier of the thread that triggered a measurement.</p>\n");
@@ -1139,7 +1141,22 @@ std::pair<std::vector<std::pair<std::pair<const void *, const void *>, uint64_t>
 	return { v, seen_count };
 }
 
-void correlate(const lock_trace_item_t *const data, const uint64_t n_records)
+void render_dot(FILE *const in, FILE *const out)
+{
+	GVC_t * gvc = gvContext();
+
+	Agraph_t *g = agread(in, 0);
+
+	gvLayout(gvc, g, "dot");
+
+	gvRender(gvc, g, "svg", out);
+
+	gvFreeLayout(gvc, g);
+	agclose(g);
+	gvFreeContext(gvc);
+}
+
+void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	auto pair = do_correlate(data, n_records);
 	auto v = pair.first;
@@ -1170,31 +1187,48 @@ void correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 	    return a.second > b.second;
 	});
 
-	FILE *fh = fopen("test.dot", "w");
-	if (!fh) {
-		fprintf(stderr, "Failed creating test.dot\n");
-		return;
-	}
+	char *dot_script = nullptr;
+	size_t dot_script_len = 0;
+	FILE *dot_script_fh = open_memstream(&dot_script, &dot_script_len);
 
-	fprintf(fh, "graph {\n");
+	fprintf(dot_script_fh, "graph {\n");
 
 	int nr = 0;
 	for(auto v_entry : v2) {
 		double gradient = (v_entry.second - lowest) / (highest - lowest);
 		uint8_t red = 255 * gradient, blue = 255 * (1.0 - gradient);
 
-		printf("%p,%p: %f - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, gradient);
+		// printf("%p,%p: %f - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, gradient);
 
-		fprintf(fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0xa0, blue);
+		fprintf(dot_script_fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0xa0, blue);
 
 		// arbitrary value chosen to keep the .dot-file output readable
 		if (++nr > 75)
 			break;
 	}
 
-	fprintf(fh, "}\n");
+	fprintf(dot_script_fh, "}\n");
 
-	fclose(fh);
+	fseek(dot_script_fh, 0, SEEK_SET);
+
+	char *svg_script = nullptr;
+	size_t svg_script_len = 0;
+	FILE *svg_script_fh = open_memstream(&svg_script, &svg_script_len);
+
+	render_dot(dot_script_fh, svg_script_fh);
+
+	fclose(dot_script_fh);
+	free(dot_script);
+
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"corr\">9. which locks might be correlated</h2>\n");
+	fprintf(fh, "<svg width=1024 height=768>\n");
+	fwrite(svg_script, 1, svg_script_len, fh);
+	fprintf(fh, "</svg>\n");
+	fprintf(fh, "</section>\n");
+
+	fclose(svg_script_fh);
+	free(svg_script);
 }
 
 int main(int argc, char *argv[])
@@ -1255,7 +1289,7 @@ int main(int argc, char *argv[])
 
 	where_are_locks_used(fh, data, n_records);
 
-	correlate(data, n_records);
+	correlate(fh, data, n_records);
 
 	put_html_tail(fh);
 
