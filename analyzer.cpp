@@ -177,7 +177,6 @@ void put_lock_error(std::map<std::pair<const Type *, lock_action_error_t>, std::
 // this may give false positives if for example an other mutex is malloced()/new'd
 // over the location of a previously unlocked mutex
 typedef struct {
-	size_t first_locker;
 	std::set<pid_t> tids;
 } lock_record_t;
 
