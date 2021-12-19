@@ -1022,10 +1022,12 @@ std::map<const void *, std::set<const void *> > do_where_are_locks_used(const lo
 
 		if (data[i].la == a_lock)
 			addr = find_caller_locker_addr((void *)pthread_mutex_lock, data[i].caller);
+#if 0  // FIXME; need to find lock_trace.cpp symbol!
 		else if (data[i].la == a_r_lock)
 			addr = find_caller_locker_addr((void *)pthread_rwlock_rdlock, data[i].caller);
 		else if (data[i].la == a_w_lock)
 			addr = find_caller_locker_addr((void *)pthread_rwlock_wrlock, data[i].caller);
+#endif
 
 		if (addr) {
 			auto it = out.find(addr);
