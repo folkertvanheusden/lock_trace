@@ -110,6 +110,8 @@ notes
 * "still locked" can also mean that a mutex was destroyed before
   being unlocked.
 
+* if backtraces make no sense, consider compiling the program
+  under test with -fno-inline
 
 similar software
 ----------------
