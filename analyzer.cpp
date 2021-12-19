@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <cfloat>
 #include <error.h>
 #include <fcntl.h>
 #include <jansson.h>
@@ -1065,26 +1066,68 @@ void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, c
 
 void do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 {
-	// how often is mutex/rwlock seen being locked after y
+	// how often is mutex/rwlock A locked while B is also locked
 	std::map<std::pair<const void *, const void *>, uint64_t> counts;
 
-	const void *prev = nullptr;
+	// how many instances are waiting for this lock (including the
+	// one holding it)
+	std::map<const void *, int> locked;
 
-	for(uint64_t i=0; i<n_records; i++) {
-		if (data[i].rc != 0)  // ignore failed calls
+	std::map<const void *, uint64_t> seen_count;
+
+	for(size_t i=0; i<n_records; i++) {
+		// ignore calls that failed
+		if (data[i].rc != 0)
 			continue;
 
-		if (data[i].la == a_lock || data[i].la == a_r_lock || data[i].la == a_w_lock) {
-			if (prev != data[i].lock) {
-				std::pair<const void *, const void *> key { prev, data[i].lock };
+		bool do_count = false;
 
-				auto it = counts.find(key);
-				if (it != counts.end())
-					it->second++;
-				else
-					counts.insert({ key, 1 });
+		if (data[i].la == a_r_lock || data[i].la == a_w_lock || data[i].la == a_lock) {
+			auto it = locked.find(data[i].lock);
 
-				prev = data[i].lock;
+			if (it == locked.end())
+				locked.insert({ data[i].lock, 1 });
+			else
+				it->second++;
+
+			auto it_seen = seen_count.find(data[i].lock);
+			if (it_seen == seen_count.end())
+				seen_count.insert({ data[i].lock, 1 });
+			else
+				it_seen->second++;
+
+			do_count = true;
+		}
+		else if (data[i].la == a_rw_unlock || data[i].la == a_unlock) {
+			auto it = locked.find(data[i].lock);
+
+			if (it == locked.end())
+				locked.insert({ data[i].lock, 1 });
+			else if (it->second > 0)  // here we ignore any errors
+				it->second--;
+
+			do_count = true;
+		}
+
+		if (do_count) {
+			for(auto ait : locked) {
+				for(auto bit : locked) {
+					const void *a = ait.first;
+					const void *b = bit.first;
+					if (a == b)
+						continue;
+
+					if (a > b)
+						std::swap(a, b);
+
+					std::pair<const void *, const void *> key { a, b };
+
+					auto it = counts.find(key);
+					if (it == counts.end())
+						counts.insert({ key, 1 });
+					else
+						it->second++;
+				}
 			}
 		}
 	}
@@ -1097,20 +1140,41 @@ void do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 	    return a.second > b.second;
 	});
 
-	printf("%zu\n", v.size());
+	std::vector<std::pair<std::pair<const void *, const void *>, double> > v2;
+
+	double lowest = DBL_MAX, highest = DBL_MIN;
 
 	for(auto v_entry : v) {
-		printf("%p,%p: %lu\n", v_entry.first.first, v_entry.first.second, v_entry.second);
+		uint64_t first_seen = seen_count.find(v_entry.first.first)->second;
+		uint64_t second_seen = seen_count.find(v_entry.first.second)->second;
+		uint64_t min_ = std::max(first_seen, second_seen);
+
+		double closeness = double(v_entry.second) / min_;
+
+		highest = std::max(highest, closeness);
+		lowest = std::max(lowest, closeness);
+
+		printf("%p,%p: %lu - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, closeness);
+
+		v2.push_back({ v_entry.first, closeness });
 	}
 
+	std::sort(v2.begin(), v2.end(), [=](std::pair<std::pair<const void *, const void *>, double> & a, std::pair<std::pair<const void *, const void *>, double> & b) {
+	    return a.second > b.second;
+	});
+
 	FILE *fh = fopen("test.dot", "w");
-	fprintf(fh, "digraph {\n");
+	fprintf(fh, "graph {\n");
 
 	int nr = 0;
-	for(auto v_entry : v) {
-		fprintf(fh , " \"%p\" -> \"%p\";\n", v_entry.first.first, v_entry.first.second);
+	for(auto v_entry : v2) {
+		double gradient = (v_entry.second - lowest) / (highest - lowest);
+		uint8_t red = 255 * gradient, blue = 255 * (1.0 - gradient);
 
-		if (++nr > 50)
+		fprintf(fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0xa0, blue);
+
+		// arbitrary value chosen to keep the .dot-file output readable
+		if (++nr > 75)
 			break;
 	}
 
