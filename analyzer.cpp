@@ -1064,7 +1064,7 @@ void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, c
 	fprintf(fh, "</section>\n");
 }
 
-void do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
+std::pair<std::vector<std::pair<std::pair<const void *, const void *>, uint64_t> >, std::map<const void *, uint64_t> > do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	// how often is mutex/rwlock A locked while B is also locked
 	std::map<std::pair<const void *, const void *>, uint64_t> counts;
@@ -1136,6 +1136,15 @@ void do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 	for(auto map_entry : counts)
 		v.push_back(map_entry);
 
+	return { v, seen_count };
+}
+
+void correlate(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto pair = do_correlate(data, n_records);
+	auto v = pair.first;
+	auto seen_count = pair.second;
+
 	std::sort(v.begin(), v.end(), [=](std::pair<std::pair<const void *, const void *>, uint64_t> & a, std::pair<std::pair<const void *, const void *>, uint64_t> & b) {
 	    return a.second > b.second;
 	});
@@ -1152,9 +1161,7 @@ void do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 		double closeness = double(v_entry.second) / min_;
 
 		highest = std::max(highest, closeness);
-		lowest = std::max(lowest, closeness);
-
-		printf("%p,%p: %lu - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, closeness);
+		lowest = std::min(lowest, closeness);
 
 		v2.push_back({ v_entry.first, closeness });
 	}
@@ -1164,12 +1171,19 @@ void do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 	});
 
 	FILE *fh = fopen("test.dot", "w");
+	if (!fh) {
+		fprintf(stderr, "Failed creating test.dot\n");
+		return;
+	}
+
 	fprintf(fh, "graph {\n");
 
 	int nr = 0;
 	for(auto v_entry : v2) {
 		double gradient = (v_entry.second - lowest) / (highest - lowest);
 		uint8_t red = 255 * gradient, blue = 255 * (1.0 - gradient);
+
+		printf("%p,%p: %f - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, gradient);
 
 		fprintf(fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0xa0, blue);
 
@@ -1241,7 +1255,7 @@ int main(int argc, char *argv[])
 
 	where_are_locks_used(fh, data, n_records);
 
-	do_correlate(data, n_records);
+	correlate(data, n_records);
 
 	put_html_tail(fh);
 
