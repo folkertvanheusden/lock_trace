@@ -11,7 +11,7 @@
 
 // required at least on RHEL and Fedora
 // see 'SHALLOW_BACKTRACE'
-//#define PREVENT_RECURSION
+#define PREVENT_RECURSION
 
 #define CAPTURE_PTHREAD_EXIT
 
@@ -25,8 +25,8 @@
 #define MEASURE_TIMING
 
 // these are at run-time and cause a small delay
-#define MUTEX_SANITY_CHECKS
-#define RWLOCK_SANITY_CHECKS
+//#define MUTEX_SANITY_CHECKS
+//#define RWLOCK_SANITY_CHECKS
 
 // slower start-up, potentially less latency while measuring
-#define PREALLOCATE
+//#define PREALLOCATE

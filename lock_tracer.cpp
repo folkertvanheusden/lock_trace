@@ -11,6 +11,8 @@
 #include <execinfo.h>
 #include <fcntl.h>
 #include <jansson.h>
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
 #include <limits.h>
 #include <map>
 #include <pthread.h>
@@ -212,6 +214,27 @@ static void show_items_buffer_percent()
 	print_timestamp();
 	fprintf(stderr, "Trace buffer %.2f%% full\n", items_idx * 100.0 / n_records);
 	color("\033[0m");
+}
+
+void my_backtrace(void **const list, const int max_depth)
+{
+	unw_context_t uc;
+	unw_getcontext(&uc);
+
+	unw_cursor_t cursor;
+	unw_init_local(&cursor, &uc);
+
+	memset(list, 0x00, sizeof(void *) * max_depth);
+
+	for(int i=0; i<max_depth; i++) {
+		if (unw_step(&cursor) <= 0)
+			break;
+
+		unw_word_t ip;
+		unw_get_reg(&cursor, UNW_REG_IP, &ip);
+
+		list[i] = (void *)ip;
+	}
 }
 
 static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t took, const int rc, void *const shallow_backtrace)
