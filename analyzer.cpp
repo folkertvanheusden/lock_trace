@@ -210,7 +210,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			}
 			else {
 				// new mutex
-				locked.insert({ mutex, { i, { tid } } });
+				locked.insert({ mutex, { { tid } } });
 			}
 		}
 		else if (data[i].la == a_unlock) {
