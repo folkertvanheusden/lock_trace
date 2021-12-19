@@ -10,9 +10,10 @@ held-durations).
 requirements
 ------------
 analyzer needs the '/usr/bin/eu-addr2line' program from the
-'elfutils' package. Also lock_tracer.cpp requires 'libc6-dev'
-and 'libjansson-dev' (glibc-devel and jansson-devel on rpm
-systems) packages to build.
+'elfutils' package. Also lock_tracer.cpp requires 'libc6-dev',
+'libjansson-dev' and libgraphviz-dev (glibc-devel,
+jansson-devel and graphviz-devel on rpm systems) packages to
+build.
 
 
 building
