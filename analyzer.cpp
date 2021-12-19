@@ -729,7 +729,7 @@ void put_html_header(FILE *const fh)
 {
 	fprintf(fh, "<!DOCTYPE html>\n<html lang=\"en\"><head>\n");
 	fprintf(fh, "<meta charset=\"utf-8\">\n");
-	fprintf(fh, "<style>thead th{ background: #ffb0b0}table{font-size:16px;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{margin-top:2.2em;}</style>\n");
+	fprintf(fh, "<style>.svgbox{height:768px;width:1024px;overflow:scroll}thead th{ background: #ffb0b0}table{font-size:16px;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{margin-top:2.2em;}</style>\n");
 	fprintf(fh, "<title>lock trace</title></head><body>\n");
 	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
 
@@ -1194,6 +1194,10 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 	FILE *dot_script_fh = open_memstream(&dot_script, &dot_script_len);
 
 	fprintf(dot_script_fh, "graph {\n");
+	fprintf(dot_script_fh, "graph[layout=neato;overlap=scalexy;sep=-0.05;splines=true;]\n");
+	fprintf(dot_script_fh, "node[fontname=\"Helvetica\";]\n");
+	fprintf(dot_script_fh, "node[shape=box;penwidth=\"0.5\";width=0;height=0;margin=\"0.05,0.05\";]\n");
+	fprintf(dot_script_fh, "edge[label=\" \";color=\"#000080\";penwidth=\"0.5\";arrowhead=\"open\";arrowsize=\"0.7\";]\n");
 
 	int nr = 0;
 	for(auto v_entry : v2) {
@@ -1202,7 +1206,7 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 
 		// printf("%p,%p: %f - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, gradient);
 
-		fprintf(dot_script_fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0xa0, blue);
+		fprintf(dot_script_fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0, blue);
 
 		// arbitrary value chosen to keep the .dot-file output readable
 		if (++nr > 75)
@@ -1224,9 +1228,9 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 
 	fprintf(fh, "<section>\n");
 	fprintf(fh, "<h2 id=\"corr\">9. which locks might be correlated</h2>\n");
-	fprintf(fh, "<svg width=1024 height=768>\n");
+	fprintf(fh, "<div class=\"svgbox\">\n");
 	fwrite(svg_script, 1, svg_script_len, fh);
-	fprintf(fh, "</svg>\n");
+	fprintf(fh, "</div>\n");
 	fprintf(fh, "</section>\n");
 
 	fclose(svg_script_fh);
