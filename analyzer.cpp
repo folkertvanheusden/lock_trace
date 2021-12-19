@@ -1,6 +1,7 @@
 // (C) 2021 by folkert@vanheusden.com
 // released under Apache license v2.0
 
+#include <algorithm>
 #include <assert.h>
 #include <error.h>
 #include <fcntl.h>
@@ -998,6 +999,62 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	fprintf(fh, "</section>\n");
 }
 
+void do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	// how often is mutex/rwlock seen being locked after y
+	std::map<std::pair<const void *, const void *>, uint64_t> counts;
+
+	const void *prev = nullptr;
+
+	for(uint64_t i=0; i<n_records; i++) {
+		if (data[i].rc != 0)  // ignore failed calls
+			continue;
+
+		if (data[i].la == a_lock || data[i].la == a_r_lock || data[i].la == a_w_lock) {
+			if (prev != data[i].lock) {
+				std::pair<const void *, const void *> key { prev, data[i].lock };
+
+				auto it = counts.find(key);
+				if (it != counts.end())
+					it->second++;
+				else
+					counts.insert({ key, 1 });
+
+				prev = data[i].lock;
+			}
+		}
+	}
+
+	std::vector<std::pair<std::pair<const void *, const void *>, uint64_t> > v;
+	for(auto map_entry : counts)
+		v.push_back(map_entry);
+
+	std::sort(v.begin(), v.end(), [=](std::pair<std::pair<const void *, const void *>, uint64_t> & a, std::pair<std::pair<const void *, const void *>, uint64_t> & b) {
+	    return a.second > b.second;
+	});
+
+	printf("%zu\n", v.size());
+
+	for(auto v_entry : v) {
+		printf("%p,%p: %lu\n", v_entry.first.first, v_entry.first.second, v_entry.second);
+	}
+
+	FILE *fh = fopen("test.dot", "w");
+	fprintf(fh, "digraph {\n");
+
+	int nr = 0;
+	for(auto v_entry : v) {
+		fprintf(fh , " \"%p\" -> \"%p\";\n", v_entry.first.first, v_entry.first.second);
+
+		if (++nr > 50)
+			break;
+	}
+
+	fprintf(fh, "}\n");
+
+	fclose(fh);
+}
+
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
@@ -1053,6 +1110,8 @@ int main(int argc, char *argv[])
 	find_double_un_locks_rwlock(fh, data, n_records);
 
 	find_still_locked_rwlock(fh, data, n_records);
+
+	do_correlate(data, n_records);
 
 	put_html_tail(fh);
 
