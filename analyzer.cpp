@@ -1236,13 +1236,22 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 	free(svg_script);
 }
 
+void help()
+{
+	printf("-t file    file name of data.dump.xxx\n");
+	printf("-c file    core file\n");
+	printf("-r file    path to \"eu-addr2line\"\n");
+	printf("-f file    html file to write to\n");
+	printf("-C         toggle \"correlation graph\" (slow!)\n");
+}
+
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
 	bool run_correlate = false;
 
 	int c = 0;
-	while((c = getopt(argc, argv, "t:c:r:f:C")) != -1) {
+	while((c = getopt(argc, argv, "t:c:r:f:hC")) != -1) {
 		if (c == 't')
 			trace_file = optarg;
 		else if (c == 'c')
@@ -1253,6 +1262,14 @@ int main(int argc, char *argv[])
 			output_file = optarg;
 		else if (c == 'C')
 			run_correlate = true;
+		else if (c == 'h') {
+			help();
+			return 0;
+		}
+		else {
+			help();
+			return 1;
+		}
 	}
 
 	if (trace_file.empty()) {
