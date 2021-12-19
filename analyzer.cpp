@@ -324,7 +324,9 @@ void put_record_details(FILE *const fh, const lock_trace_item_t & record, const 
 {
 	fprintf(fh, "<table class=\"%s\">\n", base_color.c_str());
 	fprintf(fh, "<tr><th>tid</th><td>%d</td></tr>\n", record.tid);
+#ifdef STORE_THREAD_NAME
 	fprintf(fh, "<tr><th>thread name</th><td>%s</td></tr>\n", record.thread_name);
+#endif
 #ifdef MEASURE_TIMING
 	fprintf(fh, "<tr><th>timestamp</th><td>%s</td></tr>\n", my_ctime(record.timestamp).c_str());
 	fprintf(fh, "<tr><th>took</th><td>%.3fus</td></tr>\n", record.lock_took / 1000.0);
