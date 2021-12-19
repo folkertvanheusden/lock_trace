@@ -426,8 +426,10 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	for(auto it : error_list) {
 		fprintf(fh, "<h3>%s</h3>\n", strerror(it.first));
 
-		for(auto idx : it.second) {
-			put_record_details(fh, data[idx], "green");
+		auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
+
+		for(auto entry : unique_backtraces)  {
+			put_record_details(fh, data[entry.second], "green");
 
 			fprintf(fh, "<br>\n");
 		}
