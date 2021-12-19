@@ -725,7 +725,7 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 	fprintf(fh, "</section>\n");
 }
 
-void put_html_header(FILE *const fh)
+void put_html_header(FILE *const fh, const bool run_correlate)
 {
 	fprintf(fh, "<!DOCTYPE html>\n<html lang=\"en\"><head>\n");
 	fprintf(fh, "<meta charset=\"utf-8\">\n");
@@ -744,7 +744,8 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"green\" href=\"#whereused\">where are locks used</a>\n");
-	fprintf(fh, "<li><a href=\"#corr\">correlations between locks</a>\n");
+	if (run_correlate)
+		fprintf(fh, "<li><a href=\"#corr\">correlations between locks</a>\n");
 	fprintf(fh, "</ol>\n");
 
 	fprintf(fh, "<p>The \"tid\" is the thread identifier of the thread that triggered a measurement.</p>\n");
@@ -1204,8 +1205,6 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 		double gradient = (v_entry.second - lowest) / (highest - lowest);
 		uint8_t red = 255 * gradient, blue = 255 * (1.0 - gradient);
 
-		// printf("%p,%p: %f - %f\n", v_entry.first.first, v_entry.first.second, v_entry.second, gradient);
-
 		fprintf(dot_script_fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0, blue);
 
 		// arbitrary value chosen to keep the .dot-file output readable
@@ -1240,9 +1239,10 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
+	bool run_correlate = false;
 
 	int c = 0;
-	while((c = getopt(argc, argv, "t:c:r:f:")) != -1) {
+	while((c = getopt(argc, argv, "t:c:r:f:C")) != -1) {
 		if (c == 't')
 			trace_file = optarg;
 		else if (c == 'c')
@@ -1251,6 +1251,8 @@ int main(int argc, char *argv[])
 			resolver = optarg;
 		else if (c == 'f')
 			output_file = optarg;
+		else if (c == 'C')
+			run_correlate = true;
 	}
 
 	if (trace_file.empty()) {
@@ -1277,7 +1279,7 @@ int main(int argc, char *argv[])
 
 	const uint64_t n_records = get_json_int(meta, "n_records");
 
-	put_html_header(fh);
+	put_html_header(fh, run_correlate);
 
 	emit_meta_data(fh, meta, core_file, trace_file, data, n_records);
 
@@ -1295,7 +1297,8 @@ int main(int argc, char *argv[])
 
 	where_are_locks_used(fh, data, n_records);
 
-	correlate(fh, data, n_records);
+	if (run_correlate)
+		correlate(fh, data, n_records);
 
 	put_html_tail(fh);
 
