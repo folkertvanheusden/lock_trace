@@ -1131,12 +1131,14 @@ std::pair<std::vector<std::pair<std::pair<const void *, const void *>, uint64_t>
 		}
 
 		if (do_count) {
-			for(auto ait : locked) {
-				for(auto bit : locked) {
-					const void *a = ait.first;
-					const void *b = bit.first;
-					if (a == b)
-						continue;
+			std::vector<std::pair<const void *const, int> *> ps;
+			for(auto & e : locked)
+				ps.push_back(&e);
+
+			for(size_t i1=0; i1<ps.size(); i1++) {
+				for(size_t i2=i1+1; i2<ps.size(); i2++) {
+					const void *a = ps.at(i1)->first;
+					const void *b = ps.at(i2)->first;
 
 					if (a > b)
 						std::swap(a, b);
