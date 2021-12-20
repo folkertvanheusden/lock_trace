@@ -1088,6 +1088,23 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	}
 	fprintf(fh, "</table>\n");
 
+	fprintf(fh, "<h3>per r/w lock durations</h3>\n");
+
+	fprintf(fh, "<h4>acquiration duration</h4>\n");
+	fprintf(fh, "<table>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th></tr>\n");
+	for(auto entry : d.per_rwlock_durations) {
+		double r_avg = entry.second.rwlock_r_locked_durations / double(entry.second.n_rwlock_r_locked);
+		double r_sd = sqrt(entry.second.rwlock_r_locked_sd / double(entry.second.n_rwlock_r_locked) - pow(r_avg, 2.0));
+
+		double w_avg = entry.second.rwlock_w_locked_durations / double(entry.second.n_rwlock_w_locked);
+		double w_sd = sqrt(entry.second.rwlock_w_locked_sd / double(entry.second.n_rwlock_w_locked) - pow(w_avg, 2.0));
+
+		fprintf(fh, "<tr><th>%s</th><td>r</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), r_avg, r_sd);
+		fprintf(fh, "<tr><th></th><td>w</td><td>%.3fus</td><td>%.3fus</td></tr>\n", w_avg, w_sd);
+	}
+	fprintf(fh, "</table>\n");
+
 	fprintf(fh, "</section>\n");
 }
 
