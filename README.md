@@ -95,6 +95,11 @@ notes
   under test with -fno-inline
 
 
+example
+-------
+* https://vanheusden.com/lock_tracer/example-report.html
+
+
 similar software
 ----------------
 * mutrace, http://0pointer.de/blog/projects/mutrace.html
