@@ -1,10 +1,10 @@
 // (C) 2021 by folkert@vanheusden.com
-// released under Apache license v2.0
+// Released under Apache license v2.0
 
 #define WITH_BACKTRACE
-// get this number of function calls from the stack
+// Get this number of function calls from the stack
 #define CALLER_DEPTH 8
-// this records 1 backtrace element and is a faster variant
+// This records 1 backtrace element and is a faster variant
 // don't forget to set CALLER_DEPTH to 1 as well when using
 // this option
 //#define SHALLOW_BACKTRACE
@@ -15,17 +15,22 @@
 
 #define WITH_COLORS
 
-// if you don't care about timing measurements, then comment out
+// If you don't care about timing measurements, then comment out
 // 'MEASURE_TIMING'. this makes measuring a bit faster(!)
 #define USE_CLOCK CLOCK_REALTIME
 #define MEASURE_TIMING
 
-// these are at run-time and cause a small delay (unless
+// When enabled, every regular mutex is replaced by an error-
+// checking mutex. This can cause calls to fail which is visible
+// in the analyzer-report.
+// #define ENFORCE_ERR_CHK
+
+// These are at run-time and cause a small delay (unless
 // triggered, then the delay is more significant due to printf)
 //#define MUTEX_SANITY_CHECKS
 //#define RWLOCK_SANITY_CHECKS
 
-// slower start-up, potentially less latency while measuring
+// Slower start-up, potentially less latency while measuring
 //#define PREALLOCATE
 
 #cmakedefine01 GVC_FOUND

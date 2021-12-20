@@ -57,7 +57,6 @@ static bool verbose = false;
 
 static bool fork_warning = false;
 static bool exited = false;
-static bool enforce_error_check = false;
 
 static thread_local bool prevent_backtrace = false;
 
@@ -376,10 +375,10 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) throw ()
 		fprintf(stderr, "Mutex %p has unknown type %d (caller: %p)\n", (void *)mutex, mutex->__data.__kind, __builtin_return_address(0));
 #endif
 
-	if (enforce_error_check) {
-		if (mutex->__data.__kind == PTHREAD_MUTEX_NORMAL || mutex->__data.__kind == PTHREAD_MUTEX_ADAPTIVE_NP || mutex->__data.__kind == PTHREAD_MUTEX_RECURSIVE)
-			mutex->__data.__kind = PTHREAD_MUTEX_ERRORCHECK;
-	}
+#ifdef ENFORCE_ERROR_CHECK
+	if (mutex->__data.__kind == PTHREAD_MUTEX_NORMAL || mutex->__data.__kind == PTHREAD_MUTEX_ADAPTIVE_NP || mutex->__data.__kind == PTHREAD_MUTEX_RECURSIVE)
+		mutex->__data.__kind = PTHREAD_MUTEX_ERRORCHECK;
+#endif
 
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_mutex_lock_h)(mutex);
@@ -718,10 +717,6 @@ void __attribute__ ((constructor)) start_lock_tracing()
 	verbose = getenv("TRACE_VERBOSE") != nullptr;
 	if (verbose)
 		fprintf(stderr, "Verbose tracing enabled\n");
-
-	enforce_error_check = getenv("ENFORCE_ERR_CHK") != nullptr;
-	if (enforce_error_check)
-		fprintf(stderr, "Replacing all mutexes by error-checking mutexes\n");
 
 	fprintf(stderr, "Tracing max. %lu records\n", n_records);
 
