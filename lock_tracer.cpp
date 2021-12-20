@@ -292,10 +292,6 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 		items[cur_idx].mutex_innards.__count = mutex->__data.__count;
 		items[cur_idx].mutex_innards.__owner = mutex->__data.__owner;
 		items[cur_idx].mutex_innards.__kind  = mutex->__data.__kind;
-#ifdef __x86_64__
-		items[cur_idx].mutex_innards.__spins   = mutex->__data.__spins;
-		items[cur_idx].mutex_innards.__elision = mutex->__data.__elision;
-#endif
 
 		items[cur_idx].rc = rc;
 	}

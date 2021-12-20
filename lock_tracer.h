@@ -21,10 +21,6 @@ typedef struct {
 			unsigned int __count;
 			int __owner;
 			int __kind;
-#ifdef __x86_64__
-			short __spins;
-			short __elision;
-#endif
 		} mutex_innards;
 
 		struct {
