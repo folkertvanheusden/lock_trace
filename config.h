@@ -30,4 +30,4 @@
 //#define RWLOCK_SANITY_CHECKS
 
 // slower start-up, potentially less latency while measuring
-#define PREALLOCATE
+//#define PREALLOCATE

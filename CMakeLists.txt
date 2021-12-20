@@ -40,6 +40,11 @@ target_link_libraries(lock_tracer ${JANSSON_LIBRARIES})
 target_include_directories(lock_tracer PUBLIC ${JANSSON_INCLUDE_DIRS})
 target_compile_options(lock_tracer PUBLIC ${JANSSON_CFLAGS_OTHER})
 
+pkg_check_modules(LIBUNWIND REQUIRED libunwind)
+target_link_libraries(lock_tracer ${LIBUNWIND_LIBRARIES})
+target_include_directories(lock_tracer PUBLIC ${LIBUNWIND_INCLUDE_DIRS})
+target_compile_options(lock_tracer PUBLIC ${LIBUNWIND_CFLAGS_OTHER})
+
 target_link_libraries(analyzer ${JANSSON_LIBRARIES})
 target_include_directories(analyzer PUBLIC ${JANSSON_INCLUDE_DIRS})
 target_compile_options(analyzer PUBLIC ${JANSSON_CFLAGS_OTHER})

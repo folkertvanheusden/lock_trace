@@ -11,7 +11,7 @@
 #include <time.h>
 #include <sys/time.h>
 
-#define TIME 100000
+#define TIME 10000000
 
 pthread_mutex_t test = PTHREAD_MUTEX_INITIALIZER;
 
