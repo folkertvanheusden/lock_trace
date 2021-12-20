@@ -31,3 +31,6 @@
 
 // slower start-up, potentially less latency while measuring
 //#define PREALLOCATE
+
+#cmakedefine01 GVC_FOUND
+#define HAVE_GVC GVC_FOUND

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.9.4)
 
 project(lock_tracer VERSION 1.0)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 add_definitions("-D_FILE_OFFSET_BITS=64")
@@ -49,7 +49,7 @@ target_link_libraries(analyzer ${JANSSON_LIBRARIES})
 target_include_directories(analyzer PUBLIC ${JANSSON_INCLUDE_DIRS})
 target_compile_options(analyzer PUBLIC ${JANSSON_CFLAGS_OTHER})
 
-pkg_check_modules(GVC REQUIRED libgvc)
+pkg_check_modules(GVC OPTIONAL libgvc)
 target_link_libraries(analyzer ${GVC_LIBRARIES})
 target_include_directories(analyzer PUBLIC ${GVC_INCLUDE_DIRS})
 target_compile_options(analyzer PUBLIC ${GVC_CFLAGS_OTHER})
@@ -68,3 +68,5 @@ target_compile_options(analyzer PRIVATE "-pedantic")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -ggdb3")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -ggdb3")
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -ggdb3")
+
+configure_file(config.h.in config.h)

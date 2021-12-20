@@ -13,7 +13,8 @@ analyzer needs the '/usr/bin/eu-addr2line' program from the
 'elfutils' package. Also lock_tracer.cpp requires 'libc6-dev',
 'libjansson-dev', 'libunwind-dev' and 'libgraphviz-dev' ('glibc-
 devel', 'jansson-devel', 'libunwind-devel' and 'graphviz-devel'
-on rpm systems) packages to build.
+on rpm systems) packages to build. Note that 'libgraphviz-dev'
+is optional.
 
 
 building
@@ -24,9 +25,6 @@ cd build
 cmake ..
 make
 ```
-
-If the cmake on your system is too old (or not installed), try:
-./build-wo-cmake.sh
 
 
 usage
@@ -81,8 +79,8 @@ notes
   will change timing. Also the tracing itself is 'heavy' (cpu-time
   wise). You can reduce that a bit by disabling the backtrace.
 
-* You may want to look at the defines in 'config.h' to enable- or
-  disable certain functionality of lock_tracer. Disabling e.g.
+* You may want to look at the defines in 'config.h.in' to enable-
+  or disable certain functionality of lock_tracer. Disabling e.g.
   timing measurements makes it faster. Also using
   'SHALLOW_BACKTRACE' helps for speed.
 

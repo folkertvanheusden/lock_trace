@@ -1,12 +1,16 @@
 // (C) 2021 by folkert@vanheusden.com
 // released under Apache license v2.0
 
+#include "config.h"
+
 #include <algorithm>
 #include <assert.h>
 #include <cfloat>
 #include <error.h>
 #include <fcntl.h>
+#if HAVE_GVC == 1
 #include <gvc.h>
+#endif
 #include <jansson.h>
 #include <map>
 #include <math.h>
@@ -23,7 +27,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "config.h"
 #include "lock_tracer.h"
 
 std::string resolver = "/usr/bin/eu-addr2line";
@@ -1078,6 +1081,7 @@ void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, c
 	fprintf(fh, "</section>\n");
 }
 
+#if HAVE_GVC == 1
 std::pair<std::vector<std::pair<std::pair<const void *, const void *>, uint64_t> >, std::map<const void *, uint64_t> > do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	// how often is mutex/rwlock A locked while B is also locked
@@ -1244,6 +1248,7 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 	fclose(svg_script_fh);
 	free(svg_script);
 }
+#endif
 
 void help()
 {
@@ -1251,7 +1256,9 @@ void help()
 	printf("-c file    core file\n");
 	printf("-r file    path to \"eu-addr2line\"\n");
 	printf("-f file    html file to write to\n");
-	printf("-C         toggle \"correlation graph\" (slow!)\n");
+#if HAVE_GVC == 1
+	printf("-C         toggle \"correlation graph\" (very slow!)\n");
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -1329,8 +1336,10 @@ int main(int argc, char *argv[])
 
 	where_are_locks_used(fh, data, n_records);
 
+#if HAVE_GVC == 1
 	if (run_correlate)
 		correlate(fh, data, n_records);
+#endif
 
 	put_html_tail(fh);
 
