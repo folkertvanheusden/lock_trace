@@ -1,9 +1,12 @@
 // (C) 2021 by folkert@vanheusden.com
 // released under Apache license v2.0
 
+#include <algorithm>
 #include <assert.h>
+#include <cfloat>
 #include <error.h>
 #include <fcntl.h>
+#include <gvc.h>
 #include <jansson.h>
 #include <map>
 #include <math.h>
@@ -24,7 +27,7 @@
 #include "lock_tracer.h"
 
 std::string resolver = "/usr/bin/eu-addr2line";
-std::string core_file;
+std::string core_file, exe_file;
 
 std::string myformat(const char *const fmt, ...)
 {
@@ -125,7 +128,7 @@ uint64_t MurmurHash64A(const void *const key, const int len, const uint64_t seed
 	return h;
 }
 
-hash_t calculate_callback_hash(const void *const *const pointers, const size_t n_pointers)
+hash_t calculate_backtrace_hash(const void *const *const pointers, const size_t n_pointers)
 {
 	// hash the contents of the pointer-array instead of where they point to
 	return MurmurHash64A((const void *const)pointers, n_pointers * sizeof(void *), 0);
@@ -199,7 +202,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			auto it = locked.find(mutex);
 			if (it != locked.end()) {
 				if (it->second.tids.find(tid) != it->second.tids.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, mutex, lae_already_locked, hash, i);
 				}
@@ -210,14 +213,14 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			}
 			else {
 				// new mutex
-				locked.insert({ mutex, { i, { tid } } });
+				locked.insert({ mutex, { { tid } } });
 			}
 		}
 		else if (data[i].la == a_unlock) {
 			// see if it is not locked (mistake)
 			auto it = locked.find(mutex);
 			if (it == locked.end()) {
-				hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+				hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 				put_lock_error(&out, mutex, lae_not_locked, hash, i);
 			}
@@ -225,7 +228,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			else {
 				auto tid_it = it->second.tids.find(tid);
 				if (tid_it == it->second.tids.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, mutex, lae_not_owner, hash, i);
 				}
@@ -244,7 +247,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 
 std::map<const void *, std::string> symbol_cache;
 
-std::string lookup_symbol(const void *const p, const bool both=false)
+std::string lookup_symbol(const void *const p)
 {
 	if (p == nullptr)
 		return "(nil)";
@@ -253,7 +256,12 @@ std::string lookup_symbol(const void *const p, const bool both=false)
 	if (it != symbol_cache.end())
 		return it->second;
 
-	std::string command_line = myformat("%s -x --core %s %p", resolver.c_str(), core_file.c_str(), p);
+	std::string command_line;
+
+	if (core_file.empty() == false)
+		command_line = myformat("%s -x -a -C --core %s %p", resolver.c_str(), core_file.c_str(), p);
+	else
+		command_line = myformat("%s -x -a -C -e %s %p", resolver.c_str(), exe_file.c_str(), p);
 
 	char buffer[4096] { 0x00 };
 
@@ -284,8 +292,6 @@ std::string lookup_symbol(const void *const p, const bool both=false)
 
 	if (result.substr(0, 2) == "??" || result == "")
 		result = myformat("%p", p);
-	else if (both)
-		result = myformat("%s %p", buffer, p);
 
 	symbol_cache.insert({ p, result });
 
@@ -324,7 +330,9 @@ void put_record_details(FILE *const fh, const lock_trace_item_t & record, const 
 {
 	fprintf(fh, "<table class=\"%s\">\n", base_color.c_str());
 	fprintf(fh, "<tr><th>tid</th><td>%d</td></tr>\n", record.tid);
+#ifdef STORE_THREAD_NAME
 	fprintf(fh, "<tr><th>thread name</th><td>%s</td></tr>\n", record.thread_name);
+#endif
 #ifdef MEASURE_TIMING
 	fprintf(fh, "<tr><th>timestamp</th><td>%s</td></tr>\n", my_ctime(record.timestamp).c_str());
 	fprintf(fh, "<tr><th>took</th><td>%.3fus</td></tr>\n", record.lock_took / 1000.0);
@@ -344,7 +352,7 @@ std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_tr
 	std::map<hash_t, size_t> out;
 
 	for(auto i : backtraces) {
-		hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+		hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 		auto it = out.find(hash);
 		if (it == out.end())
@@ -423,8 +431,10 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 	for(auto it : error_list) {
 		fprintf(fh, "<h3>%s</h3>\n", strerror(it.first));
 
-		for(auto idx : it.second) {
-			put_record_details(fh, data[idx], "green");
+		auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
+
+		for(auto entry : unique_backtraces)  {
+			put_record_details(fh, data[entry.second], "green");
 
 			fprintf(fh, "<br>\n");
 		}
@@ -600,7 +610,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 			auto it = r_locked.find(rwlock);
 			if (it != r_locked.end()) {
 				if (it->second.find(tid) != it->second.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_already_locked, hash, i);
 				}
@@ -618,7 +628,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 			auto it = w_locked.find(rwlock);
 			if (it != w_locked.end()) {
 				if (it->second.find(tid) != it->second.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_already_locked, hash, i);
 				}
@@ -638,7 +648,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 
 				auto r_it = r_locked.find(rwlock);
 				if (r_it == r_locked.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_not_locked, hash, i);
 				}
@@ -646,7 +656,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 				else {
 					auto tid_it = r_it->second.find(tid);
 					if (tid_it == r_it->second.end()) {
-						hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+						hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 						put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 					}
@@ -663,7 +673,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 			else {
 				auto tid_it = w_it->second.find(tid);
 				if (tid_it == w_it->second.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 				}
@@ -722,10 +732,11 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 	fprintf(fh, "</section>\n");
 }
 
-void put_html_header(FILE *const fh)
+void put_html_header(FILE *const fh, const bool run_correlate)
 {
-	fprintf(fh, "<!DOCTYPE html>\n<html><head>\n");
-	fprintf(fh, "<style>thead th { background: #ffb0b0}table{font-size:16px;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{margin-top:2.2em;}</style>\n");
+	fprintf(fh, "<!DOCTYPE html>\n<html lang=\"en\"><head>\n");
+	fprintf(fh, "<meta charset=\"utf-8\">\n");
+	fprintf(fh, "<style>.svgbox{height:768px;width:1024px;overflow:scroll}thead th{ background: #ffb0b0}table{font-size:16px;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{margin-top:2.2em;}</style>\n");
 	fprintf(fh, "<title>lock trace</title></head><body>\n");
 	fprintf(fh, "<h1>LOCK TRACE</h1>\n");
 
@@ -739,6 +750,9 @@ void put_html_header(FILE *const fh)
 	fprintf(fh, "<li><a class=\"blue\" href=\"#stillm\">still locked mutexes</a>\n");
 	fprintf(fh, "<li><a class=\"yellow\" href=\"#doublerw\">double lock/unlock r/w-locks</a>\n");
 	fprintf(fh, "<li><a class=\"magenta\" href=\"#stillrw\">still locked r/w-locks</a>\n");
+	fprintf(fh, "<li><a class=\"green\" href=\"#whereused\">where are locks used</a>\n");
+	if (run_correlate)
+		fprintf(fh, "<li><a href=\"#corr\">correlations between locks</a>\n");
 	fprintf(fh, "</ol>\n");
 
 	fprintf(fh, "<p>The \"tid\" is the thread identifier of the thread that triggered a measurement.</p>\n");
@@ -814,8 +828,10 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 	fprintf(fh, "<tr><th>started at</th><td>%.9f (%s)</td></tr>\n", start_ts / double(billion), my_ctime(start_ts).c_str());
 	fprintf(fh, "<tr><th>stopped at</th><td>%.9f (%s)</td></tr>\n", end_ts / double(billion), my_ctime(end_ts).c_str());
 	fprintf(fh, "<tr><th>took</th><td>%fs</td></tr>\n", took);
+	fprintf(fh, "</table>\n");
 
 	fprintf(fh, "<h3>counts</h3>\n");
+	fprintf(fh, "<table>\n");
 	fprintf(fh, "<tr><th># mutex try-locks</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_mutex_trylock"));
 	fprintf(fh, "<tr><th># rwlock try-rdlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_rdlock"));
 	fprintf(fh, "<tr><th># rwlock try-timed-rdlock</th><td>%ld</td></tr>\n", get_json_int(meta, "cnt_rwlock_try_timedrdlock"));
@@ -916,14 +932,14 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			d.durations_rwlock.rwlock_r_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_r_acquire_locks++;
 			// locked durations
-			// TODO per thread-callback
+			// TODO per thread-backtrace
 		}
 		else if (data[i].la == a_w_lock) {
 			d.durations_rwlock.rwlock_w_lock_acquire_durations += took;
 			d.durations_rwlock.rwlock_w_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_w_acquire_locks++;
 			// locked durations
-			// TODO per thread-callback
+			// TODO per thread-backtrace
 		}
 	}
 
@@ -977,7 +993,7 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 		double avg = entry.second.mutex_lock_acquire_durations / double(entry.second.n_mutex_acquire_locks);
 		double sd = sqrt(entry.second.mutex_lock_acquire_sd / double(entry.second.n_mutex_acquire_locks) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first, true).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
 	}
 	fprintf(fh, "</table>\n");
 
@@ -988,19 +1004,261 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 		double avg = entry.second.mutex_locked_durations / double(entry.second.n_mutex_locked_durations);
 		double sd = sqrt(entry.second.mutex_locked_durations_sd / double(entry.second.n_mutex_locked_durations) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first, true).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
 	}
 	fprintf(fh, "</table>\n");
 
 	fprintf(fh, "</section>\n");
 }
 
+const void *find_caller_locker_addr(const void *const addr, const void *const *const backtrace)
+{
+	for(int i=0; i<CALLER_DEPTH - 1; i++) {
+		if (backtrace[i] == addr)
+			return backtrace[i + 1];
+	}
+
+	return backtrace[0];
+}
+
+// lock, backtrace
+std::map<const void *, std::set<const void *> > do_where_are_locks_used(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	std::map<const void *, std::set<const void *> > out;
+
+	for(uint64_t i=0; i<n_records; i++) {
+		if (data[i].rc != 0)  // ignore failed calls
+			continue;
+
+		const void *addr = nullptr;
+
+		if (data[i].la == a_lock)
+			addr = find_caller_locker_addr((void *)pthread_mutex_lock, data[i].caller);
+#if 0  // FIXME; need to find lock_trace.cpp symbol!
+		else if (data[i].la == a_r_lock)
+			addr = find_caller_locker_addr((void *)pthread_rwlock_rdlock, data[i].caller);
+		else if (data[i].la == a_w_lock)
+			addr = find_caller_locker_addr((void *)pthread_rwlock_wrlock, data[i].caller);
+#endif
+
+		if (addr) {
+			auto it = out.find(addr);
+			if (it == out.end())
+				out.insert({ data[i].lock, { addr } });
+			else
+				it->second.insert(addr);
+		}
+	}
+
+	return out;
+}
+
+void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto lock_use_locations = do_where_are_locks_used(data, n_records);
+
+	fprintf(fh, "<section>\n");
+
+	fprintf(fh, "<h2 id=\"whereused\">8. where are locks used</h2>\n");
+	fprintf(fh, "<table class=\"green\">\n");
+	for(auto & entry : lock_use_locations) {
+		fprintf(fh, "<tr><td>%s</td><td>\n", lookup_symbol(entry.first).c_str());
+
+		fprintf(fh, "<table>\n");
+		for(const auto & p : entry.second)
+			fprintf(fh, "<tr><td>%s</td></tr>\n", lookup_symbol(p).c_str());
+		fprintf(fh, "</table>\n");
+
+		fprintf(fh, "</td></tr>\n");
+	}
+	fprintf(fh, "</table>\n");
+
+	fprintf(fh, "</section>\n");
+}
+
+std::pair<std::vector<std::pair<std::pair<const void *, const void *>, uint64_t> >, std::map<const void *, uint64_t> > do_correlate(const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	// how often is mutex/rwlock A locked while B is also locked
+	std::map<std::pair<const void *, const void *>, uint64_t> counts;
+
+	// how many instances are waiting for this lock (including the
+	// one holding it)
+	std::map<const void *, int> locked;
+
+	std::map<const void *, uint64_t> seen_count;
+
+	for(size_t i=0; i<n_records; i++) {
+		// ignore calls that failed
+		if (data[i].rc != 0)
+			continue;
+
+		bool do_count = false;
+
+		if (data[i].la == a_r_lock || data[i].la == a_w_lock || data[i].la == a_lock) {
+			auto it = locked.find(data[i].lock);
+
+			if (it == locked.end())
+				locked.insert({ data[i].lock, 1 });
+			else
+				it->second++;
+
+			auto it_seen = seen_count.find(data[i].lock);
+			if (it_seen == seen_count.end())
+				seen_count.insert({ data[i].lock, 1 });
+			else
+				it_seen->second++;
+
+			do_count = true;
+		}
+		else if (data[i].la == a_rw_unlock || data[i].la == a_unlock) {
+			auto it = locked.find(data[i].lock);
+
+			if (it == locked.end())
+				locked.insert({ data[i].lock, 1 });
+			else if (it->second > 0)  // here we ignore any errors
+				it->second--;
+
+			do_count = true;
+		}
+
+		if (do_count) {
+			for(auto ait : locked) {
+				for(auto bit : locked) {
+					const void *a = ait.first;
+					const void *b = bit.first;
+					if (a == b)
+						continue;
+
+					if (a > b)
+						std::swap(a, b);
+
+					std::pair<const void *, const void *> key { a, b };
+
+					auto it = counts.find(key);
+					if (it == counts.end())
+						counts.insert({ key, 1 });
+					else
+						it->second++;
+				}
+			}
+		}
+	}
+
+	std::vector<std::pair<std::pair<const void *, const void *>, uint64_t> > v;
+	for(auto map_entry : counts)
+		v.push_back(map_entry);
+
+	return { v, seen_count };
+}
+
+void render_dot(FILE *const in, FILE *const out)
+{
+	GVC_t * gvc = gvContext();
+
+	Agraph_t *g = agread(in, 0);
+
+	gvLayout(gvc, g, "dot");
+
+	gvRender(gvc, g, "svg", out);
+
+	gvFreeLayout(gvc, g);
+	agclose(g);
+	gvFreeContext(gvc);
+}
+
+void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records)
+{
+	auto pair = do_correlate(data, n_records);
+	auto v = pair.first;
+	auto seen_count = pair.second;
+
+	std::sort(v.begin(), v.end(), [=](std::pair<std::pair<const void *, const void *>, uint64_t> & a, std::pair<std::pair<const void *, const void *>, uint64_t> & b) {
+	    return a.second > b.second;
+	});
+
+	std::vector<std::pair<std::pair<const void *, const void *>, double> > v2;
+
+	double lowest = DBL_MAX, highest = DBL_MIN;
+
+	for(auto v_entry : v) {
+		uint64_t first_seen = seen_count.find(v_entry.first.first)->second;
+		uint64_t second_seen = seen_count.find(v_entry.first.second)->second;
+		uint64_t min_ = std::max(first_seen, second_seen);
+
+		double closeness = double(v_entry.second) / min_;
+
+		highest = std::max(highest, closeness);
+		lowest = std::min(lowest, closeness);
+
+		v2.push_back({ v_entry.first, closeness });
+	}
+
+	std::sort(v2.begin(), v2.end(), [=](std::pair<std::pair<const void *, const void *>, double> & a, std::pair<std::pair<const void *, const void *>, double> & b) {
+	    return a.second > b.second;
+	});
+
+	char *dot_script = nullptr;
+	size_t dot_script_len = 0;
+	FILE *dot_script_fh = open_memstream(&dot_script, &dot_script_len);
+
+	fprintf(dot_script_fh, "graph {\n");
+	fprintf(dot_script_fh, "graph[layout=neato;overlap=scalexy;sep=-0.05;splines=true;]\n");
+	fprintf(dot_script_fh, "node[fontname=\"Helvetica\";]\n");
+	fprintf(dot_script_fh, "node[shape=box;penwidth=\"0.5\";width=0;height=0;margin=\"0.05,0.05\";]\n");
+	fprintf(dot_script_fh, "edge[label=\" \";color=\"#000080\";penwidth=\"0.5\";arrowhead=\"open\";arrowsize=\"0.7\";]\n");
+
+	int nr = 0;
+	for(auto v_entry : v2) {
+		double gradient = (v_entry.second - lowest) / (highest - lowest);
+		uint8_t red = 255 * gradient, blue = 255 * (1.0 - gradient);
+
+		fprintf(dot_script_fh , " \"%p\" -- \"%p\" [style=filled color=\"#%02x%02x%02x\"];\n", v_entry.first.first, v_entry.first.second, red, 0, blue);
+
+		// arbitrary value chosen to keep the .dot-file output readable
+		if (++nr > 75)
+			break;
+	}
+
+	fprintf(dot_script_fh, "}\n");
+
+	fseek(dot_script_fh, 0, SEEK_SET);
+
+	char *svg_script = nullptr;
+	size_t svg_script_len = 0;
+	FILE *svg_script_fh = open_memstream(&svg_script, &svg_script_len);
+
+	render_dot(dot_script_fh, svg_script_fh);
+
+	fclose(dot_script_fh);
+	free(dot_script);
+
+	fprintf(fh, "<section>\n");
+	fprintf(fh, "<h2 id=\"corr\">9. which locks might be correlated</h2>\n");
+	fprintf(fh, "<div class=\"svgbox\">\n");
+	fwrite(svg_script, 1, svg_script_len, fh);
+	fprintf(fh, "</div>\n");
+	fprintf(fh, "</section>\n");
+
+	fclose(svg_script_fh);
+	free(svg_script);
+}
+
+void help()
+{
+	printf("-t file    file name of data.dump.xxx\n");
+	printf("-c file    core file\n");
+	printf("-r file    path to \"eu-addr2line\"\n");
+	printf("-f file    html file to write to\n");
+	printf("-C         toggle \"correlation graph\" (slow!)\n");
+}
+
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
+	bool run_correlate = false;
 
 	int c = 0;
-	while((c = getopt(argc, argv, "t:c:r:f:")) != -1) {
+	while((c = getopt(argc, argv, "t:c:r:f:hC")) != -1) {
 		if (c == 't')
 			trace_file = optarg;
 		else if (c == 'c')
@@ -1009,6 +1267,16 @@ int main(int argc, char *argv[])
 			resolver = optarg;
 		else if (c == 'f')
 			output_file = optarg;
+		else if (c == 'C')
+			run_correlate = true;
+		else if (c == 'h') {
+			help();
+			return 0;
+		}
+		else {
+			help();
+			return 1;
+		}
 	}
 
 	if (trace_file.empty()) {
@@ -1025,6 +1293,8 @@ int main(int argc, char *argv[])
 	if (!meta)
 		return 1;
 
+	exe_file = get_json_string(meta, "exe_name");
+
 	const lock_trace_item_t *const data = load_data(get_json_string(meta, "measurements"));
 
 	FILE *fh = fopen(output_file.c_str(), "w");
@@ -1035,7 +1305,7 @@ int main(int argc, char *argv[])
 
 	const uint64_t n_records = get_json_int(meta, "n_records");
 
-	put_html_header(fh);
+	put_html_header(fh, run_correlate);
 
 	emit_meta_data(fh, meta, core_file, trace_file, data, n_records);
 
@@ -1050,6 +1320,11 @@ int main(int argc, char *argv[])
 	find_double_un_locks_rwlock(fh, data, n_records);
 
 	find_still_locked_rwlock(fh, data, n_records);
+
+	where_are_locks_used(fh, data, n_records);
+
+	if (run_correlate)
+		correlate(fh, data, n_records);
 
 	put_html_tail(fh);
 

@@ -49,16 +49,16 @@
 #define likely(x)       __builtin_expect((x), 1)
 #define unlikely(x)     __builtin_expect((x), 0)
 
-uint64_t n_records = 16777216, emit_count_threshold = n_records / 10;
-size_t length = 0;
-int mmap_fd = -1;
-char *data_filename = nullptr;
+static uint64_t n_records = 16777216, emit_count_threshold = n_records / 10;
+static size_t length = 0;
+static int mmap_fd = -1;
+static char *data_filename = nullptr;
 
-bool verbose = false;
+static bool verbose = false;
 
-bool fork_warning = false;
-bool exited = false;
-bool enforce_error_check = false;
+static bool fork_warning = false;
+static bool exited = false;
+static bool enforce_error_check = false;
 
 static void color(const char *str)
 {
@@ -84,71 +84,71 @@ static uint64_t get_ns()
 #endif
 }
 
-uint64_t global_start_ts = get_ns();
+static uint64_t global_start_ts = get_ns();
 
-std::atomic<std::uint64_t> items_idx { 0 };
-lock_trace_item_t *items = nullptr;
+static std::atomic<std::uint64_t> items_idx { 0 };
+static lock_trace_item_t *items = nullptr;
 
-std::atomic<std::uint64_t> cnt_mutex_trylock { 0 };
-std::atomic<std::uint64_t> cnt_rwlock_try_rdlock { 0 };
-std::atomic<std::uint64_t> cnt_rwlock_try_timedrdlock { 0 };
-std::atomic<std::uint64_t> cnt_rwlock_try_wrlock { 0 };
-std::atomic<std::uint64_t> cnt_rwlock_try_timedwrlock { 0 };
+static std::atomic<std::uint64_t> cnt_mutex_trylock { 0 };
+static std::atomic<std::uint64_t> cnt_rwlock_try_rdlock { 0 };
+static std::atomic<std::uint64_t> cnt_rwlock_try_timedrdlock { 0 };
+static std::atomic<std::uint64_t> cnt_rwlock_try_wrlock { 0 };
+static std::atomic<std::uint64_t> cnt_rwlock_try_timedwrlock { 0 };
 
 // assuming atomic 8-byte pointer updates
 typedef int (* org_pthread_mutex_lock)(pthread_mutex_t *mutex);
-org_pthread_mutex_lock org_pthread_mutex_lock_h = nullptr;
+static org_pthread_mutex_lock org_pthread_mutex_lock_h = nullptr;
 
 typedef int (* org_pthread_mutex_trylock)(pthread_mutex_t *mutex);
-org_pthread_mutex_trylock org_pthread_mutex_trylock_h = nullptr;
+static org_pthread_mutex_trylock org_pthread_mutex_trylock_h = nullptr;
 
 typedef int (* org_pthread_mutex_unlock)(pthread_mutex_t *mutex);
-org_pthread_mutex_unlock org_pthread_mutex_unlock_h = nullptr;
+static org_pthread_mutex_unlock org_pthread_mutex_unlock_h = nullptr;
 
 typedef int (* org_pthread_mutex_init)(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr);
-org_pthread_mutex_init org_pthread_mutex_init_h = nullptr;
+static org_pthread_mutex_init org_pthread_mutex_init_h = nullptr;
 
 typedef int (* org_pthread_mutex_destroy)(pthread_mutex_t *mutex);
-org_pthread_mutex_destroy org_pthread_mutex_destroy_h = nullptr;
+static org_pthread_mutex_destroy org_pthread_mutex_destroy_h = nullptr;
 
 typedef int (* org_pthread_exit)(void *retval);
-org_pthread_exit org_pthread_exit_h = nullptr;
+static org_pthread_exit org_pthread_exit_h = nullptr;
 
 typedef int (* org_pthread_setname_np)(pthread_t thread, const char *name);
-org_pthread_setname_np org_pthread_setname_np_h = nullptr;
+static org_pthread_setname_np org_pthread_setname_np_h = nullptr;
 
 typedef pid_t (* org_fork)(void);
-org_fork org_fork_h = nullptr;
+static org_fork org_fork_h = nullptr;
 
 typedef int (* org_pthread_rwlock_rdlock)(pthread_rwlock_t *rwlock);
-org_pthread_rwlock_rdlock org_pthread_rwlock_rdlock_h = nullptr;
+static org_pthread_rwlock_rdlock org_pthread_rwlock_rdlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_tryrdlock)(pthread_rwlock_t *rwlock);
-org_pthread_rwlock_tryrdlock org_pthread_rwlock_tryrdlock_h = nullptr;
+static org_pthread_rwlock_tryrdlock org_pthread_rwlock_tryrdlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_timedrdlock)(pthread_rwlock_t *rwlock, const struct timespec *abstime);
-org_pthread_rwlock_timedrdlock org_pthread_rwlock_timedrdlock_h = nullptr;
+static org_pthread_rwlock_timedrdlock org_pthread_rwlock_timedrdlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_wrlock)(pthread_rwlock_t *rwlock);
-org_pthread_rwlock_wrlock org_pthread_rwlock_wrlock_h = nullptr;
+static org_pthread_rwlock_wrlock org_pthread_rwlock_wrlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_trywrlock)(pthread_rwlock_t *rwlock);
-org_pthread_rwlock_trywrlock org_pthread_rwlock_trywrlock_h = nullptr;
+static org_pthread_rwlock_trywrlock org_pthread_rwlock_trywrlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_timedwrlock)(pthread_rwlock_t *rwlock, const struct timespec *abstime);
-org_pthread_rwlock_timedwrlock org_pthread_rwlock_timedwrlock_h = nullptr;
+static org_pthread_rwlock_timedwrlock org_pthread_rwlock_timedwrlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_unlock)(pthread_rwlock_t *rwlock);
-org_pthread_rwlock_unlock org_pthread_rwlock_unlock_h = nullptr;
+static org_pthread_rwlock_unlock org_pthread_rwlock_unlock_h = nullptr;
 
 typedef int (* org_pthread_rwlock_destroy)(pthread_rwlock_t *rwlock);
-org_pthread_rwlock_destroy org_pthread_rwlock_destroy_h = nullptr;
+static org_pthread_rwlock_destroy org_pthread_rwlock_destroy_h = nullptr;
 
 typedef int (* org_pthread_rwlock_init)(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr);
-org_pthread_rwlock_init org_pthread_rwlock_init_h = nullptr;
+static org_pthread_rwlock_init org_pthread_rwlock_init_h = nullptr;
 
-std::map<int, std::string> *tid_names = nullptr;
-pthread_rwlock_t tid_names_lock = PTHREAD_RWLOCK_INITIALIZER;
+static std::map<int, std::string> *tid_names = nullptr;
+static pthread_rwlock_t tid_names_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static int _gettid()
 {
@@ -381,7 +381,7 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	return rc;
 }
 
-void mutex_sanity_check(pthread_mutex_t *const mutex, void *const caller)
+static void mutex_sanity_check(pthread_mutex_t *const mutex, void *const caller)
 {
 #ifdef MUTEX_SANITY_CHECKS
 	if (mutex->__data.__kind < 0 || mutex->__data.__kind > PTHREAD_MUTEX_ADAPTIVE_NP)
@@ -395,7 +395,7 @@ void mutex_sanity_check(pthread_mutex_t *const mutex, void *const caller)
 #endif
 }
 
-void rwlock_sanity_check(pthread_rwlock_t *const rwlock, void *const caller)
+static void rwlock_sanity_check(pthread_rwlock_t *const rwlock, void *const caller)
 {
 #ifdef RWLOCK_SANITY_CHECKS
 #if __GLIBC_PREREQ(2, 30)
@@ -597,7 +597,7 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 	uint64_t end_ts = get_ns();
 
 	// TODO seperate a_r_lock for timed locks as they may take quite
-	// a bit longer
+	// a bit longer or add a flag which tells so
 	STORE_RWLOCK_INFO(rwlock, a_r_lock, end_ts - start_ts, rc);
 
 	return rc;
