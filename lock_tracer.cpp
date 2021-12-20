@@ -216,7 +216,7 @@ static void show_items_buffer_percent()
 	color("\033[0m");
 }
 
-void my_backtrace(void **const list, const int max_depth)
+static void my_backtrace(void **const list, const int max_depth)
 {
 	unw_context_t uc;
 	unw_getcontext(&uc);
@@ -313,7 +313,7 @@ pid_t fork(void) throw ()
 }
 
 #ifdef CAPTURE_PTHREAD_EXIT
-void pthread_exit(void *retval)
+void pthread_exit(void *retval) throw ()
 {
 	if (likely(items != nullptr)) {
 		uint64_t cur_idx = items_idx++;
@@ -357,7 +357,7 @@ void pthread_exit(void *retval)
 }
 #endif
 
-int pthread_mutex_lock(pthread_mutex_t *mutex)
+int pthread_mutex_lock(pthread_mutex_t *mutex) throw ()
 {
 	if (unlikely(!org_pthread_mutex_lock_h))
 		org_pthread_mutex_lock_h = (org_pthread_mutex_lock)dlsym(RTLD_NEXT, "pthread_mutex_lock");
@@ -411,7 +411,7 @@ static void rwlock_sanity_check(pthread_rwlock_t *const rwlock, void *const call
 #endif
 }
 
-int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
+int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr) throw ()
 {
 	if (unlikely(!org_pthread_mutex_init_h))
 		org_pthread_mutex_init_h = (org_pthread_mutex_init)dlsym(RTLD_NEXT, "pthread_mutex_init");
@@ -422,7 +422,7 @@ int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
 	return rc;
 }
 
-int pthread_mutex_destroy(pthread_mutex_t *mutex)
+int pthread_mutex_destroy(pthread_mutex_t *mutex) throw ()
 {
 	if (unlikely(!org_pthread_mutex_destroy_h))
 		org_pthread_mutex_destroy_h = (org_pthread_mutex_destroy)dlsym(RTLD_NEXT, "pthread_mutex_destroy");
@@ -433,7 +433,7 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex)
 	return rc;
 }
 
-int pthread_mutex_trylock(pthread_mutex_t *mutex)
+int pthread_mutex_trylock(pthread_mutex_t *mutex) throw ()
 {
 	if (unlikely(!org_pthread_mutex_trylock_h))
 		org_pthread_mutex_trylock_h = (org_pthread_mutex_trylock)dlsym(RTLD_NEXT, "pthread_mutex_trylock");
@@ -449,7 +449,7 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex)
 	return rc;
 }
 
-int pthread_mutex_unlock(pthread_mutex_t *mutex)
+int pthread_mutex_unlock(pthread_mutex_t *mutex) throw ()
 {
 	if (unlikely(!org_pthread_mutex_unlock_h))
 		org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
@@ -529,7 +529,7 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 #define STORE_RWLOCK_INFO(a, b, c, d) store_rwlock_info(a, b, c, d, nullptr) 
 #endif
 
-int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr)
+int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *attr) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_init_h))
 		org_pthread_rwlock_init_h = (org_pthread_rwlock_init)dlsym(RTLD_NEXT, "pthread_rwlock_init");
@@ -540,7 +540,7 @@ int pthread_rwlock_init(pthread_rwlock_t *rwlock, const pthread_rwlockattr_t *at
 	return rc;
 }
 
-int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
+int pthread_rwlock_destroy(pthread_rwlock_t *rwlock) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_destroy_h))
 		org_pthread_rwlock_destroy_h = (org_pthread_rwlock_destroy)dlsym(RTLD_NEXT, "pthread_rwlock_destroy");
@@ -551,7 +551,7 @@ int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
-int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
+int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_rdlock_h))
 		org_pthread_rwlock_rdlock_h = (org_pthread_rwlock_rdlock)dlsym(RTLD_NEXT, "pthread_rwlock_rdlock");
@@ -567,7 +567,7 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
-int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
+int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_tryrdlock_h))
 		org_pthread_rwlock_tryrdlock_h = (org_pthread_rwlock_tryrdlock)dlsym(RTLD_NEXT, "pthread_rwlock_tryrdlock");
@@ -583,7 +583,7 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
-int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *abstime)
+int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *abstime) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_timedrdlock_h))
 		org_pthread_rwlock_timedrdlock_h = (org_pthread_rwlock_timedrdlock)dlsym(RTLD_NEXT, "pthread_rwlock_timedrdlock");
@@ -603,7 +603,7 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 	return rc;
 }
 
-int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
+int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_wrlock_h))
 		org_pthread_rwlock_wrlock_h = (org_pthread_rwlock_wrlock)dlsym(RTLD_NEXT, "pthread_rwlock_wrlock");
@@ -619,7 +619,7 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
-int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
+int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_trywrlock_h))
 		org_pthread_rwlock_trywrlock_h = (org_pthread_rwlock_trywrlock)dlsym(RTLD_NEXT, "pthread_rwlock_trywrlock");
@@ -635,7 +635,7 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
-int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *abstime)
+int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *abstime) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_timedwrlock_h))
 		org_pthread_rwlock_timedwrlock_h = (org_pthread_rwlock_timedwrlock)dlsym(RTLD_NEXT, "pthread_rwlock_timedwrlock");
@@ -653,7 +653,7 @@ int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *
 	return rc;
 }
 
-int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
+int pthread_rwlock_unlock(pthread_rwlock_t *rwlock) throw ()
 {
 	if (unlikely(!org_pthread_rwlock_unlock_h))
 		org_pthread_rwlock_unlock_h = (org_pthread_rwlock_unlock)dlsym(RTLD_NEXT, "pthread_rwlock_unlock");
@@ -667,7 +667,7 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
 	return rc;
 }
 
-int pthread_setname_np(pthread_t thread, const char *name)
+int pthread_setname_np(pthread_t thread, const char *name) throw ()
 {
 #ifdef STORE_THREAD_NAME
 	if (likely(name != nullptr)) {
@@ -769,7 +769,7 @@ static void emit_key_value(json_t *const tgt, const char *key, const uint64_t va
 	json_object_set(tgt, key, json_integer(value));
 }
 
-void exit(int status)
+void exit(int status) throw ()
 {
 	exited = true;
 	uint64_t end_ts = get_ns();
