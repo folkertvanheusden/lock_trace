@@ -870,6 +870,11 @@ typedef struct {
 } durations_rwlock_t;
 
 typedef struct {
+	uint64_t rwlock_r_locked_durations, n_rwlock_r_locked, rwlock_r_locked_sd;
+	uint64_t rwlock_w_locked_durations, n_rwlock_w_locked, rwlock_w_locked_sd;
+} locked_durations_rwlock_t;
+
+typedef struct {
 	durations_mutex_t durations_mutex;
 	std::map<pthread_mutex_t *, durations_mutex_t> per_mutex_durations;
 
@@ -877,8 +882,15 @@ typedef struct {
 	std::map<pthread_mutex_t *, locked_durations_mutex_t> per_mutex_locked_durations;
 
 	durations_rwlock_t durations_rwlock;
-	std::map<pthread_mutex_t *, durations_rwlock_t> per_rwlock_durations;
+	std::map<pthread_rwlock_t *, locked_durations_rwlock_t> per_rwlock_durations;
 } durations_t;
+
+typedef struct {
+	uint64_t w_timestamp;
+	int __cur_writer;  // tid of who holds the write lock
+
+	uint64_t r_timestamp;
+} rwlock_holder_t;
 
 durations_t do_determine_durations(const lock_trace_item_t *const data, const uint64_t n_records)
 {
@@ -888,6 +900,8 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 	d.durations_rwlock = { 0 };
 
 	std::map<pthread_mutex_t *, uint64_t> mutex_acquire_timestamp;
+
+	std::map<pthread_rwlock_t *, rwlock_holder_t> rwlock_acquire_timestamp;
 
 	for(uint64_t i=0; i<n_records; i++) {
 		if (data[i].rc != 0)  // ignore failed calls
@@ -919,11 +933,11 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			if (lock_it != mutex_acquire_timestamp.end()) {
 				uint64_t t_delta_took = data[i].timestamp - lock_it->second;
 
+				mutex_acquire_timestamp.erase(lock_it);
+
 				d.locked_durations.mutex_locked_durations += t_delta_took;
 				d.locked_durations.n_mutex_locked_durations++;
 				d.locked_durations.mutex_locked_durations_sd += t_delta_took * t_delta_took;
-
-				mutex_acquire_timestamp.erase(lock_it);
 
 				pthread_mutex_t *mutex_lock = (pthread_mutex_t *)data[i].lock;
 
@@ -941,15 +955,71 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			d.durations_rwlock.rwlock_r_lock_acquire_durations += took;
 			d.durations_rwlock.rwlock_r_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_r_acquire_locks++;
+
 			// locked durations
-			// TODO per thread-backtrace
+			pthread_rwlock_t *rwlock_lock = (pthread_rwlock_t *)data[i].lock;
+
+			auto it = rwlock_acquire_timestamp.find(rwlock_lock);
+			if (it == rwlock_acquire_timestamp.end())
+				rwlock_acquire_timestamp.insert({ rwlock_lock, { 0, 0, data[i].timestamp } });
+			else
+				it->second.r_timestamp = data[i].timestamp;
 		}
 		else if (data[i].la == a_w_lock) {
 			d.durations_rwlock.rwlock_w_lock_acquire_durations += took;
 			d.durations_rwlock.rwlock_w_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_w_acquire_locks++;
+
 			// locked durations
-			// TODO per thread-backtrace
+			pthread_rwlock_t *rwlock_lock = (pthread_rwlock_t *)data[i].lock;
+
+			auto it = rwlock_acquire_timestamp.find(rwlock_lock);
+			if (it == rwlock_acquire_timestamp.end())
+				rwlock_acquire_timestamp.insert({ rwlock_lock, { data[i].timestamp, data[i].tid, 0 } });
+			else {
+				it->second.w_timestamp = data[i].timestamp;
+				it->second.__cur_writer = data[i].tid;
+			}
+		}
+		else if (data[i].la == a_rw_unlock) {
+			pthread_rwlock_t *rwlock_lock = (pthread_rwlock_t *)data[i].lock;
+
+			auto lock_it = rwlock_acquire_timestamp.find(rwlock_lock);
+
+			if (lock_it != rwlock_acquire_timestamp.end()) {
+				if (lock_it->second.__cur_writer == data[i].tid && lock_it->second.w_timestamp > 0) {  // write lock
+					uint64_t t_delta_took = data[i].timestamp - lock_it->second.w_timestamp;
+
+					lock_it->second.w_timestamp = 0;
+
+					auto it = d.per_rwlock_durations.find(rwlock_lock);
+
+					if (it != d.per_rwlock_durations.end()) {
+						it->second.rwlock_w_locked_durations += t_delta_took;
+						it->second.n_rwlock_w_locked++;
+						it->second.rwlock_w_locked_sd += t_delta_took * t_delta_took;
+					}
+					else {
+						d.per_rwlock_durations.insert({ rwlock_lock, { 0, 0, 0, t_delta_took, 1, t_delta_took * t_delta_took } });
+					}
+				}
+				else if (lock_it->second.r_timestamp > 0) {  // read lock
+					uint64_t t_delta_took = data[i].timestamp - lock_it->second.r_timestamp;
+
+					lock_it->second.r_timestamp = 0;
+
+					auto it = d.per_rwlock_durations.find(rwlock_lock);
+
+					if (it != d.per_rwlock_durations.end()) {
+						it->second.rwlock_r_locked_durations += t_delta_took;
+						it->second.n_rwlock_r_locked++;
+						it->second.rwlock_r_locked_sd += t_delta_took * t_delta_took;
+					}
+					else {
+						d.per_rwlock_durations.insert({ rwlock_lock, { t_delta_took, 1, t_delta_took * t_delta_took, 0, 0, 0 } });
+					}
+				}
+			}
 		}
 	}
 
