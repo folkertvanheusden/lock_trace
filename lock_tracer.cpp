@@ -242,7 +242,7 @@ static void my_backtrace(void **const list, const int max_depth)
             list[i] = (void *)ip;
         }
 
-        prevent_backtrace = true;
+        prevent_backtrace = false;
     }
 }
 
