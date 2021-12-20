@@ -27,7 +27,7 @@
 #include "lock_tracer.h"
 
 std::string resolver = "/usr/bin/eu-addr2line";
-std::string core_file;
+std::string core_file, exe_file;
 
 std::string myformat(const char *const fmt, ...)
 {
@@ -256,7 +256,12 @@ std::string lookup_symbol(const void *const p)
 	if (it != symbol_cache.end())
 		return it->second;
 
-	std::string command_line = myformat("%s -x -a -C --core %s %p", resolver.c_str(), core_file.c_str(), p);
+	std::string command_line;
+
+	if (core_file.empty() == false)
+		command_line = myformat("%s -x -a -C --core %s %p", resolver.c_str(), core_file.c_str(), p);
+	else
+		command_line = myformat("%s -x -a -C -e %s %p", resolver.c_str(), exe_file.c_str(), p);
 
 	char buffer[4096] { 0x00 };
 
@@ -1287,6 +1292,8 @@ int main(int argc, char *argv[])
 	json_t *const meta = load_json(trace_file);
 	if (!meta)
 		return 1;
+
+	exe_file = get_json_string(meta, "exe_name");
 
 	const lock_trace_item_t *const data = load_data(get_json_string(meta, "measurements"));
 
