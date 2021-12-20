@@ -1281,8 +1281,10 @@ int main(int argc, char *argv[])
 			resolver = optarg;
 		else if (c == 'f')
 			output_file = optarg;
+#if HAVE_GVC == 1
 		else if (c == 'C')
 			run_correlate = true;
+#endif
 		else if (c == 'h') {
 			help();
 			return 0;
