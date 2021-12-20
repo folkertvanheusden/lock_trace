@@ -68,10 +68,6 @@ Show analysis:
 This will generate an html-file that can be opened with a regular
 web-browser.
 
-You can also set the 'ENFORCE_ERR_CHK' environment variable. In that
-case every mutex that is not error-checking will be replaced by an
-error checking mutex. Note that this modifies the mutexes in place.
-
 
 notes
 -----

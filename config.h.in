@@ -23,6 +23,7 @@
 // When enabled, every regular mutex is replaced by an error-
 // checking mutex. This can cause calls to fail which is visible
 // in the analyzer-report.
+// This changes the mutexe in place.
 // #define ENFORCE_ERR_CHK
 
 // These are at run-time and cause a small delay (unless
