@@ -790,6 +790,10 @@ void exit(int status)
 		char hostname[HOST_NAME_MAX + 1];
 		gethostname(hostname, sizeof hostname);
 
+		emit_key_value(obj, "pthread_mutex_lock", (intptr_t)pthread_mutex_lock);
+		emit_key_value(obj, "pthread_rwlock_rdlock", (intptr_t)pthread_rwlock_rdlock);
+		emit_key_value(obj, "pthread_rwlock_wrlock", (intptr_t)pthread_rwlock_wrlock);
+
 		emit_key_value(obj, "hostname", hostname);
 
 		emit_key_value(obj, "start_ts", global_start_ts);

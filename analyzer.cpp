@@ -29,6 +29,10 @@
 std::string resolver = "/usr/bin/eu-addr2line";
 std::string core_file, exe_file;
 
+const void *p_pthread_mutex_lock = nullptr;
+const void *p_pthread_rwlock_rdlock = nullptr;
+const void *p_pthread_rwlock_wrlock = nullptr;
+
 std::string myformat(const char *const fmt, ...)
 {
 	char *buffer = nullptr;
@@ -1033,13 +1037,11 @@ std::map<const void *, std::set<const void *> > do_where_are_locks_used(const lo
 		const void *addr = nullptr;
 
 		if (data[i].la == a_lock)
-			addr = find_caller_locker_addr((void *)pthread_mutex_lock, data[i].caller);
-#if 0  // FIXME; need to find lock_trace.cpp symbol!
+			addr = find_caller_locker_addr(p_pthread_mutex_lock, data[i].caller);
 		else if (data[i].la == a_r_lock)
-			addr = find_caller_locker_addr((void *)pthread_rwlock_rdlock, data[i].caller);
+			addr = find_caller_locker_addr(p_pthread_rwlock_rdlock, data[i].caller);
 		else if (data[i].la == a_w_lock)
-			addr = find_caller_locker_addr((void *)pthread_rwlock_wrlock, data[i].caller);
-#endif
+			addr = find_caller_locker_addr(p_pthread_rwlock_wrlock, data[i].caller);
 
 		if (addr) {
 			auto it = out.find(addr);
@@ -1294,6 +1296,10 @@ int main(int argc, char *argv[])
 		return 1;
 
 	exe_file = get_json_string(meta, "exe_name");
+
+	p_pthread_mutex_lock = (void *)get_json_int(meta, "pthread_mutex_lock");
+	p_pthread_rwlock_rdlock = (void *)get_json_int(meta, "pthread_rwlock_rdlock");
+	p_pthread_rwlock_wrlock = (void *)get_json_int(meta, "pthread_rwlock_wrlock");
 
 	const lock_trace_item_t *const data = load_data(get_json_string(meta, "measurements"));
 
