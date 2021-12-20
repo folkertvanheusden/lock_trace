@@ -51,7 +51,7 @@ target_link_libraries(analyzer ${JANSSON_LIBRARIES})
 target_include_directories(analyzer PUBLIC ${JANSSON_INCLUDE_DIRS})
 target_compile_options(analyzer PUBLIC ${JANSSON_CFLAGS_OTHER})
 
-pkg_check_modules(GVC OPTIONAL libgvc)
+pkg_check_modules(GVC libgvc)
 target_link_libraries(analyzer ${GVC_LIBRARIES})
 target_include_directories(analyzer PUBLIC ${GVC_INCLUDE_DIRS})
 target_compile_options(analyzer PUBLIC ${GVC_CFLAGS_OTHER})
