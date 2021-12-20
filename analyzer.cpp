@@ -866,8 +866,11 @@ typedef struct {
 
 typedef struct {
 	uint64_t rwlock_r_lock_acquire_durations, n_rwlock_r_acquire_locks, rwlock_r_lock_acquire_sd;
+} durations_rwlock_r_t;
+
+typedef struct {
 	uint64_t rwlock_w_lock_acquire_durations, n_rwlock_w_acquire_locks, rwlock_w_lock_acquire_sd;
-} durations_rwlock_t;
+} durations_rwlock_w_t;
 
 typedef struct {
 	uint64_t rwlock_r_locked_durations, n_rwlock_r_locked, rwlock_r_locked_sd;
@@ -883,7 +886,10 @@ typedef struct {
 	std::map<pthread_mutex_t *, locked_durations_mutex_t> per_mutex_locked_durations;
 
 	// acquire
-	durations_rwlock_t durations_rwlock;
+	durations_rwlock_r_t durations_r_rwlock;
+	durations_rwlock_w_t durations_w_rwlock;
+	std::map<pthread_rwlock_t *, durations_rwlock_r_t> per_rwlock_r_acquire_durations;
+	std::map<pthread_rwlock_t *, durations_rwlock_w_t> per_rwlock_w_acquire_durations;
 	// hold
 	std::map<pthread_rwlock_t *, locked_durations_rwlock_t> per_rwlock_locked_durations;
 } durations_t;
@@ -900,7 +906,8 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 	durations_t d;
 	d.durations_mutex = { 0 };
 	d.locked_durations = { 0 };
-	d.durations_rwlock = { 0 };
+	d.durations_r_rwlock = { 0 };
+	d.durations_w_rwlock = { 0 };
 
 	std::map<pthread_mutex_t *, uint64_t> mutex_acquire_timestamp;
 
@@ -955,29 +962,47 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			}
 		}
 		else if (data[i].la == a_r_lock) {
-			d.durations_rwlock.rwlock_r_lock_acquire_durations += took;
-			d.durations_rwlock.rwlock_r_lock_acquire_sd += took * took;
-			d.durations_rwlock.n_rwlock_r_acquire_locks++;
-			// TODO: per lock 'r_took'
-
-			// locked durations
 			pthread_rwlock_t *rwlock_lock = (pthread_rwlock_t *)data[i].lock;
 
-			auto it = rwlock_acquire_timestamp.find(rwlock_lock);
-			if (it == rwlock_acquire_timestamp.end())
+			// acquiring
+			d.durations_r_rwlock.rwlock_r_lock_acquire_durations += took;
+			d.durations_r_rwlock.n_rwlock_r_acquire_locks++;
+			d.durations_r_rwlock.rwlock_r_lock_acquire_sd += took * took;
+			// per lock 'r_took'
+			auto ar_it = d.per_rwlock_r_acquire_durations.find(rwlock_lock);
+			if (ar_it == d.per_rwlock_r_acquire_durations.end())
+				d.per_rwlock_r_acquire_durations.insert({ rwlock_lock, { took, 1, took * took } });
+			else {
+				ar_it->second.rwlock_r_lock_acquire_durations += took;
+				ar_it->second.n_rwlock_r_acquire_locks++;
+				ar_it->second.rwlock_r_lock_acquire_sd += took * took;
+			}
+
+			// locked durations
+			auto d_it = rwlock_acquire_timestamp.find(rwlock_lock);
+			if (d_it == rwlock_acquire_timestamp.end())
 				rwlock_acquire_timestamp.insert({ rwlock_lock, { 0, 0, data[i].timestamp } });
 			else
-				it->second.r_timestamp = data[i].timestamp;
+				d_it->second.r_timestamp = data[i].timestamp;
 		}
 		else if (data[i].la == a_w_lock) {
-			d.durations_rwlock.rwlock_w_lock_acquire_durations += took;
-			d.durations_rwlock.rwlock_w_lock_acquire_sd += took * took;
-			d.durations_rwlock.n_rwlock_w_acquire_locks++;
-			// TODO: per lock 'w_took'
-
-			// locked durations
 			pthread_rwlock_t *rwlock_lock = (pthread_rwlock_t *)data[i].lock;
 
+			// acquiring
+			d.durations_w_rwlock.rwlock_w_lock_acquire_durations += took;
+			d.durations_w_rwlock.rwlock_w_lock_acquire_sd += took * took;
+			d.durations_w_rwlock.n_rwlock_w_acquire_locks++;
+			// per lock 'w_took'
+			auto aw_it = d.per_rwlock_w_acquire_durations.find(rwlock_lock);
+			if (aw_it == d.per_rwlock_w_acquire_durations.end())
+				d.per_rwlock_w_acquire_durations.insert({ rwlock_lock, { took, 1, took * took } });
+			else {
+				aw_it->second.rwlock_w_lock_acquire_durations += took;
+				aw_it->second.n_rwlock_w_acquire_locks++;
+				aw_it->second.rwlock_w_lock_acquire_sd += took * took;
+			}
+
+			// locked durations
 			auto it = rwlock_acquire_timestamp.find(rwlock_lock);
 			if (it == rwlock_acquire_timestamp.end())
 				rwlock_acquire_timestamp.insert({ rwlock_lock, { data[i].timestamp, data[i].tid, 0 } });
@@ -1058,13 +1083,13 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	}
 
 	// read lock of r/w locks
-	double avg_rwlock_r_lock_acquire_durations = d.durations_rwlock.rwlock_r_lock_acquire_durations / double(d.durations_rwlock.n_rwlock_r_acquire_locks);
-	double sd_rwlock_r_lock_acquire_durations = sqrt(d.durations_rwlock.rwlock_r_lock_acquire_sd / double(d.durations_rwlock.n_rwlock_r_acquire_locks) - pow(avg_rwlock_r_lock_acquire_durations, 2.0));
+	double avg_rwlock_r_lock_acquire_durations = d.durations_r_rwlock.rwlock_r_lock_acquire_durations / double(d.durations_r_rwlock.n_rwlock_r_acquire_locks);
+	double sd_rwlock_r_lock_acquire_durations = sqrt(d.durations_r_rwlock.rwlock_r_lock_acquire_sd / double(d.durations_r_rwlock.n_rwlock_r_acquire_locks) - pow(avg_rwlock_r_lock_acquire_durations, 2.0));
 	fprintf(fh, "<tr><th>read lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_r_lock_acquire_durations / 1000.0, sd_rwlock_r_lock_acquire_durations / 1000.0);
 
 	// write lock of r/w locks
-	double avg_rwlock_w_lock_acquire_durations = d.durations_rwlock.rwlock_w_lock_acquire_durations / double(d.durations_rwlock.n_rwlock_w_acquire_locks);
-	double sd_rwlock_w_lock_acquire_durations = sqrt(d.durations_rwlock.rwlock_w_lock_acquire_sd / double(d.durations_rwlock.n_rwlock_w_acquire_locks) - pow(avg_rwlock_w_lock_acquire_durations, 2.0));
+	double avg_rwlock_w_lock_acquire_durations = d.durations_w_rwlock.rwlock_w_lock_acquire_durations / double(d.durations_w_rwlock.n_rwlock_w_acquire_locks);
+	double sd_rwlock_w_lock_acquire_durations = sqrt(d.durations_w_rwlock.rwlock_w_lock_acquire_sd / double(d.durations_w_rwlock.n_rwlock_w_acquire_locks) - pow(avg_rwlock_w_lock_acquire_durations, 2.0));
 	fprintf(fh, "<tr><th>write lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_w_lock_acquire_durations / 1000.0, sd_rwlock_w_lock_acquire_durations);
 
 	fprintf(fh, "</table>\n");
@@ -1095,15 +1120,27 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 
 	fprintf(fh, "<h3>per r/w lock durations</h3>\n");
 
-#if 0
-	fprintf(fh, "<h4>acquiration duration</h4>\n");
+	fprintf(fh, "<h4>read lock acquiration duration</h4>\n");
 	fprintf(fh, "<table>\n");
 	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th></tr>\n");
-	for(auto entry : d.per_rwlock_durations) {
-		// TODO
+	for(auto entry : d.per_rwlock_r_acquire_durations) {
+		double avg = entry.second.rwlock_r_lock_acquire_durations / double(entry.second.n_rwlock_r_acquire_locks);
+		double sd = sqrt(entry.second.rwlock_r_lock_acquire_sd / double(entry.second.n_rwlock_r_acquire_locks) - pow(avg, 2.0));
+
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
 	}
 	fprintf(fh, "</table>\n");
-#endif
+
+	fprintf(fh, "<h4>write lock acquiration duration</h4>\n");
+	fprintf(fh, "<table>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th></tr>\n");
+	for(auto entry : d.per_rwlock_w_acquire_durations) {
+		double avg = entry.second.rwlock_w_lock_acquire_durations / double(entry.second.n_rwlock_w_acquire_locks);
+		double sd = sqrt(entry.second.rwlock_w_lock_acquire_sd / double(entry.second.n_rwlock_w_acquire_locks) - pow(avg, 2.0));
+
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+	}
+	fprintf(fh, "</table>\n");
 
 	fprintf(fh, "<h4>r/w-lock held duration</h4>\n");
 	fprintf(fh, "<table>\n");
