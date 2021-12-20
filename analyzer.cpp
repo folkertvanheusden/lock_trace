@@ -128,7 +128,7 @@ uint64_t MurmurHash64A(const void *const key, const int len, const uint64_t seed
 	return h;
 }
 
-hash_t calculate_callback_hash(const void *const *const pointers, const size_t n_pointers)
+hash_t calculate_backtrace_hash(const void *const *const pointers, const size_t n_pointers)
 {
 	// hash the contents of the pointer-array instead of where they point to
 	return MurmurHash64A((const void *const)pointers, n_pointers * sizeof(void *), 0);
@@ -202,7 +202,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			auto it = locked.find(mutex);
 			if (it != locked.end()) {
 				if (it->second.tids.find(tid) != it->second.tids.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, mutex, lae_already_locked, hash, i);
 				}
@@ -220,7 +220,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			// see if it is not locked (mistake)
 			auto it = locked.find(mutex);
 			if (it == locked.end()) {
-				hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+				hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 				put_lock_error(&out, mutex, lae_not_locked, hash, i);
 			}
@@ -228,7 +228,7 @@ auto do_find_double_un_locks_mutex(const lock_trace_item_t *const data, const si
 			else {
 				auto tid_it = it->second.tids.find(tid);
 				if (tid_it == it->second.tids.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, mutex, lae_not_owner, hash, i);
 				}
@@ -347,7 +347,7 @@ std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_tr
 	std::map<hash_t, size_t> out;
 
 	for(auto i : backtraces) {
-		hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+		hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 		auto it = out.find(hash);
 		if (it == out.end())
@@ -605,7 +605,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 			auto it = r_locked.find(rwlock);
 			if (it != r_locked.end()) {
 				if (it->second.find(tid) != it->second.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_already_locked, hash, i);
 				}
@@ -623,7 +623,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 			auto it = w_locked.find(rwlock);
 			if (it != w_locked.end()) {
 				if (it->second.find(tid) != it->second.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_already_locked, hash, i);
 				}
@@ -643,7 +643,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 
 				auto r_it = r_locked.find(rwlock);
 				if (r_it == r_locked.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_not_locked, hash, i);
 				}
@@ -651,7 +651,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 				else {
 					auto tid_it = r_it->second.find(tid);
 					if (tid_it == r_it->second.end()) {
-						hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+						hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 						put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 					}
@@ -668,7 +668,7 @@ auto do_find_double_un_locks_rwlock(const lock_trace_item_t *const data, const s
 			else {
 				auto tid_it = w_it->second.find(tid);
 				if (tid_it == w_it->second.end()) {
-					hash_t hash = calculate_callback_hash(data[i].caller, CALLER_DEPTH);
+					hash_t hash = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
 					put_lock_error(&out, rwlock, lae_not_owner, hash, i);
 				}
@@ -927,14 +927,14 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			d.durations_rwlock.rwlock_r_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_r_acquire_locks++;
 			// locked durations
-			// TODO per thread-callback
+			// TODO per thread-backtrace
 		}
 		else if (data[i].la == a_w_lock) {
 			d.durations_rwlock.rwlock_w_lock_acquire_durations += took;
 			d.durations_rwlock.rwlock_w_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_w_acquire_locks++;
 			// locked durations
-			// TODO per thread-callback
+			// TODO per thread-backtrace
 		}
 	}
 
