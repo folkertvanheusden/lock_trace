@@ -8,7 +8,6 @@
 #include <atomic>
 #include <dlfcn.h>
 #include <errno.h>
-#include <execinfo.h>
 #include <fcntl.h>
 #include <jansson.h>
 #define UNW_LOCAL_ONLY
@@ -258,7 +257,7 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 #if defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)
 		items[cur_idx].caller[0] = shallow_backtrace;
 #else
-		backtrace(items[cur_idx].caller, CALLER_DEPTH);
+		my_backtrace(items[cur_idx].caller, CALLER_DEPTH);
 #endif
 #endif
 		items[cur_idx].lock = mutex;
@@ -313,7 +312,7 @@ pid_t fork(void) throw ()
 }
 
 #ifdef CAPTURE_PTHREAD_EXIT
-void pthread_exit(void *retval) throw ()
+void pthread_exit(void *retval)
 {
 	if (likely(items != nullptr)) {
 		uint64_t cur_idx = items_idx++;
@@ -482,7 +481,7 @@ static void store_rwlock_info(pthread_rwlock_t *rwlock, lock_action_t la, uint64
 #if defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)
 		items[cur_idx].caller[0] = shallow_backtrace;
 #else
-		backtrace(items[cur_idx].caller, CALLER_DEPTH);
+		my_backtrace(items[cur_idx].caller, CALLER_DEPTH);
 #endif
 #endif
 		items[cur_idx].lock = rwlock;
