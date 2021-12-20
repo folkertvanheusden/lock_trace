@@ -302,7 +302,7 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 #define STORE_MUTEX_INFO(a, b, c, d) store_mutex_info(a, b, c, d, nullptr) 
 #endif
 
-pid_t fork(void)
+pid_t fork(void) throw ()
 {
 	if (unlikely(!org_fork_h))
 		org_fork_h = (org_fork)dlsym(RTLD_NEXT, "fork");
