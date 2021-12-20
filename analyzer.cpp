@@ -875,14 +875,17 @@ typedef struct {
 } locked_durations_rwlock_t;
 
 typedef struct {
+	// acquire
 	durations_mutex_t durations_mutex;
 	std::map<pthread_mutex_t *, durations_mutex_t> per_mutex_durations;
-
+	// hold
 	locked_durations_mutex_t locked_durations;
 	std::map<pthread_mutex_t *, locked_durations_mutex_t> per_mutex_locked_durations;
 
+	// acquire
 	durations_rwlock_t durations_rwlock;
-	std::map<pthread_rwlock_t *, locked_durations_rwlock_t> per_rwlock_durations;
+	// hold
+	std::map<pthread_rwlock_t *, locked_durations_rwlock_t> per_rwlock_locked_durations;
 } durations_t;
 
 typedef struct {
@@ -955,6 +958,7 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			d.durations_rwlock.rwlock_r_lock_acquire_durations += took;
 			d.durations_rwlock.rwlock_r_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_r_acquire_locks++;
+			// TODO: per lock 'r_took'
 
 			// locked durations
 			pthread_rwlock_t *rwlock_lock = (pthread_rwlock_t *)data[i].lock;
@@ -969,6 +973,7 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			d.durations_rwlock.rwlock_w_lock_acquire_durations += took;
 			d.durations_rwlock.rwlock_w_lock_acquire_sd += took * took;
 			d.durations_rwlock.n_rwlock_w_acquire_locks++;
+			// TODO: per lock 'w_took'
 
 			// locked durations
 			pthread_rwlock_t *rwlock_lock = (pthread_rwlock_t *)data[i].lock;
@@ -992,15 +997,15 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 
 					lock_it->second.w_timestamp = 0;
 
-					auto it = d.per_rwlock_durations.find(rwlock_lock);
+					auto it = d.per_rwlock_locked_durations.find(rwlock_lock);
 
-					if (it != d.per_rwlock_durations.end()) {
+					if (it != d.per_rwlock_locked_durations.end()) {
 						it->second.rwlock_w_locked_durations += t_delta_took;
 						it->second.n_rwlock_w_locked++;
 						it->second.rwlock_w_locked_sd += t_delta_took * t_delta_took;
 					}
 					else {
-						d.per_rwlock_durations.insert({ rwlock_lock, { 0, 0, 0, t_delta_took, 1, t_delta_took * t_delta_took } });
+						d.per_rwlock_locked_durations.insert({ rwlock_lock, { 0, 0, 0, t_delta_took, 1, t_delta_took * t_delta_took } });
 					}
 				}
 				else if (lock_it->second.r_timestamp > 0) {  // read lock
@@ -1008,15 +1013,15 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 
 					lock_it->second.r_timestamp = 0;
 
-					auto it = d.per_rwlock_durations.find(rwlock_lock);
+					auto it = d.per_rwlock_locked_durations.find(rwlock_lock);
 
-					if (it != d.per_rwlock_durations.end()) {
+					if (it != d.per_rwlock_locked_durations.end()) {
 						it->second.rwlock_r_locked_durations += t_delta_took;
 						it->second.n_rwlock_r_locked++;
 						it->second.rwlock_r_locked_sd += t_delta_took * t_delta_took;
 					}
 					else {
-						d.per_rwlock_durations.insert({ rwlock_lock, { t_delta_took, 1, t_delta_took * t_delta_took, 0, 0, 0 } });
+						d.per_rwlock_locked_durations.insert({ rwlock_lock, { t_delta_took, 1, t_delta_took * t_delta_took, 0, 0, 0 } });
 					}
 				}
 			}
@@ -1090,15 +1095,25 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 
 	fprintf(fh, "<h3>per r/w lock durations</h3>\n");
 
+#if 0
 	fprintf(fh, "<h4>acquiration duration</h4>\n");
 	fprintf(fh, "<table>\n");
 	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th></tr>\n");
 	for(auto entry : d.per_rwlock_durations) {
+		// TODO
+	}
+	fprintf(fh, "</table>\n");
+#endif
+
+	fprintf(fh, "<h4>r/w-lock held duration</h4>\n");
+	fprintf(fh, "<table>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>r/w></th><th>average</th><th>standard deviation</th></tr>\n");
+	for(auto entry : d.per_rwlock_locked_durations) {
 		double r_avg = entry.second.rwlock_r_locked_durations / double(entry.second.n_rwlock_r_locked);
 		double r_sd = sqrt(entry.second.rwlock_r_locked_sd / double(entry.second.n_rwlock_r_locked) - pow(r_avg, 2.0));
 
 		double w_avg = entry.second.rwlock_w_locked_durations / double(entry.second.n_rwlock_w_locked);
-		double w_sd = sqrt(entry.second.rwlock_w_locked_sd / double(entry.second.n_rwlock_w_locked) - pow(w_avg, 2.0));
+		double w_sd = sqrt(entry.second.rwlock_w_locked_sd / double(entry.second.n_rwlock_w_locked) - pow(r_avg, 2.0));
 
 		fprintf(fh, "<tr><th>%s</th><td>r</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), r_avg, r_sd);
 		fprintf(fh, "<tr><th></th><td>w</td><td>%.3fus</td><td>%.3fus</td></tr>\n", w_avg, w_sd);
