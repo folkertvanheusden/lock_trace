@@ -32,10 +32,6 @@
 std::string resolver = "/usr/bin/eu-addr2line";
 std::string core_file, exe_file;
 
-const void *p_pthread_mutex_lock = nullptr;
-const void *p_pthread_rwlock_rdlock = nullptr;
-const void *p_pthread_rwlock_wrlock = nullptr;
-
 std::string myformat(const char *const fmt, ...)
 {
 	char *buffer = nullptr;
@@ -1160,40 +1156,27 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	fprintf(fh, "</section>\n");
 }
 
-const void *find_caller_locker_addr(const void *const addr, const void *const *const backtrace)
-{
-	for(int i=0; i<CALLER_DEPTH - 1; i++) {
-		if (backtrace[i] == addr)
-			return backtrace[i + 1];
-	}
-
-	return backtrace[0];
-}
-
 // lock, backtrace
-std::map<const void *, std::set<const void *> > do_where_are_locks_used(const lock_trace_item_t *const data, const uint64_t n_records)
+std::map<const void *, std::map<hash_t, uint64_t> > do_where_are_locks_used(const lock_trace_item_t *const data, const uint64_t n_records)
 {
-	std::map<const void *, std::set<const void *> > out;
+	std::map<const void *, std::map<hash_t, uint64_t> > out;
 
 	for(uint64_t i=0; i<n_records; i++) {
 		if (data[i].rc != 0)  // ignore failed calls
 			continue;
 
-		const void *addr = nullptr;
+		if (data[i].la == a_lock || data[i].la == a_r_lock || data[i].la == a_w_lock) {
+			hash_t h = calculate_backtrace_hash(data[i].caller, CALLER_DEPTH);
 
-		if (data[i].la == a_lock)
-			addr = find_caller_locker_addr(p_pthread_mutex_lock, data[i].caller);
-		else if (data[i].la == a_r_lock)
-			addr = find_caller_locker_addr(p_pthread_rwlock_rdlock, data[i].caller);
-		else if (data[i].la == a_w_lock)
-			addr = find_caller_locker_addr(p_pthread_rwlock_wrlock, data[i].caller);
+			auto lock_it = out.find(data[i].lock);
+			if (lock_it != out.end())
+				lock_it->second.insert({ h, i });
+			else {
+				std::map<hash_t, uint64_t> d;
+				d.insert({ h, i });
 
-		if (addr) {
-			auto it = out.find(addr);
-			if (it == out.end())
-				out.insert({ data[i].lock, { addr } });
-			else
-				it->second.insert(addr);
+				out.insert({ data[i].lock, d });
+			}
 		}
 	}
 
@@ -1211,10 +1194,11 @@ void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, c
 	for(auto & entry : lock_use_locations) {
 		fprintf(fh, "<tr><td>%s</td><td>\n", lookup_symbol(entry.first).c_str());
 
-		fprintf(fh, "<table>\n");
-		for(const auto & p : entry.second)
-			fprintf(fh, "<tr><td>%s</td></tr>\n", lookup_symbol(p).c_str());
-		fprintf(fh, "</table>\n");
+		for(const auto & p : entry.second) {
+			put_call_trace(fh, data[p.second], "green");
+
+			fprintf(fh, "<br>\n");
+		}
 
 		fprintf(fh, "</td></tr>\n");
 	}
@@ -1450,10 +1434,6 @@ int main(int argc, char *argv[])
 		return 1;
 
 	exe_file = get_json_string(meta, "exe_name");
-
-	p_pthread_mutex_lock = (void *)get_json_int(meta, "pthread_mutex_lock");
-	p_pthread_rwlock_rdlock = (void *)get_json_int(meta, "pthread_rwlock_rdlock");
-	p_pthread_rwlock_wrlock = (void *)get_json_int(meta, "pthread_rwlock_wrlock");
 
 	const lock_trace_item_t *const data = load_data(get_json_string(meta, "measurements"));
 
