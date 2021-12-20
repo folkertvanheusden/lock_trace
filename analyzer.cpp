@@ -767,7 +767,10 @@ void put_html_header(FILE *const fh, const bool run_correlate)
 
 void put_html_tail(FILE *const fh)
 {
-	fprintf(fh, "<p><br><br></p><hr><footer>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</footer></body></html>\n");
+	const char footer[] = "<p><br><br></p><hr><footer>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</footer></body></html>\n";
+
+	if (fprintf(fh, "<p><br><br></p><hr><footer>This <b>locktracer</b> is (C) 2021 by Folkert van Heusden &lt;mail@vanheusden.com&gt;</footer></body></html>\n") != sizeof footer - 1)
+		fprintf(stderr, "Problem writing output-file: filesystem full?\n");
 }
 
 std::string get_json_string(const json_t *const js, const char *const key)
@@ -1346,6 +1349,8 @@ int main(int argc, char *argv[])
 	fclose(fh);
 
 	json_decref(meta);
+
+	fprintf(stderr, "Finished\n");
 
 	return 0;
 }

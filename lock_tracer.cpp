@@ -791,7 +791,8 @@ void exit(int status) throw ()
 	if (msync(items, length, MS_SYNC) == -1)
 		fprintf(stderr, "Problem pushing data to disk: %s\n", strerror(errno));
 
-	munmap(items, length);  // TODO error checking
+	if (munmap(items, length) == -1)
+		fprintf(stderr, "munmap problem: %s\n", strerror(errno));
 
 	close(mmap_fd);
 
@@ -811,11 +812,12 @@ void exit(int status) throw ()
 		color("\033[0m");
 
 		FILE *fh = fopen(file_name, "w");
+		if (!fh) {
+			fprintf(stderr, "Failed creating %s: %s\n", file_name, strerror(errno));
+			fh = stderr;
+		}
 
 		free(file_name);
-
-		if (!fh)
-			fh = stderr;
 
 		json_t *obj = json_object();
 
