@@ -84,16 +84,6 @@ notes
   timing measurements makes it faster. Also using
   'SHALLOW_BACKTRACE' helps for speed.
 
-* If your program suddenly hangs where it did not before, then
-  this may be caused by the version of 'backtrace' in libgcc
-  using 'pthread_mutex' underneath.
-  There are three solutions:
-  * disable backrace recording (see notes on WITH_BACKTRACE
-    below) or:
-  * use a shallow backtrace (SHALLOW_BACKTRACE)
-  * uncomment PREVENT_RECURSION which makes it do a "shallow back-
-    trace" (1 record)
-
 * Note that capturing pthread_exit may introduce inaccuracies: it
   assumes that the cleaner(s) (see pthread_cleanup_push) will
   unlock any left over locked mutex.
