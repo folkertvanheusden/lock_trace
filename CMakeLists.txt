@@ -70,3 +70,5 @@ set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -ggdb3")
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -ggdb3")
 
 configure_file(config.h.in config.h)
+target_include_directories(analyzer PUBLIC "${PROJECT_BINARY_DIR}")
+target_include_directories(lock_tracer PUBLIC "${PROJECT_BINARY_DIR}")
