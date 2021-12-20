@@ -8,6 +8,8 @@ project(lock_tracer VERSION 1.0)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+set(CMAKE_C_STANDARD 99)
+
 add_definitions("-D_FILE_OFFSET_BITS=64")
 
 set(CMAKE_BUILD_TYPE Debug)
