@@ -11,7 +11,7 @@
 
 // required at least on RHEL and Fedora
 // see 'SHALLOW_BACKTRACE'
-#define PREVENT_RECURSION
+//#define PREVENT_RECURSION
 
 #define CAPTURE_PTHREAD_EXIT
 
