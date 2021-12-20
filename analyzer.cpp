@@ -330,7 +330,7 @@ std::string my_ctime(const uint64_t nts)
 	struct tm tm { 0 };
 	localtime_r(&t, &tm);
 
-	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, nts % billion);
+	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, int(nts % billion));
 }
 
 void put_record_details(FILE *const fh, const lock_trace_item_t & record, const std::string & base_color)
@@ -816,7 +816,7 @@ std::map<std::string, uint64_t> data_stats(const lock_trace_item_t *const data, 
 	return out;
 }
 
-void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core_file, const std::string & trace_file, const lock_trace_item_t *const data, const uint64_t n_records)
+void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core_file_in, const std::string & trace_file, const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	fprintf(fh, "<h2 id=\"meta\">1. META DATA</h2>\n");
 	fprintf(fh, "<table><tr><th colspan=2>meta data</th></tr>\n");
@@ -824,7 +824,7 @@ void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core
 	fprintf(fh, "<tr><th>PID</th><td>%ld</td></tr>\n", get_json_int(meta, "pid"));
 	fprintf(fh, "<tr><th>scheduler</th><td>%s</td></tr>\n", get_json_string(meta, "scheduler").c_str());
 	fprintf(fh, "<tr><th>host name</th><td>%s</td></tr>\n", get_json_string(meta, "hostname").c_str());
-	fprintf(fh, "<tr><th>core file</th><td>%s</td></tr>\n", core_file.c_str());
+	fprintf(fh, "<tr><th>core file</th><td>%s</td></tr>\n", core_file_in.c_str());
 	fprintf(fh, "<tr><th>trace file</th><td>%s</td></tr>\n", trace_file.c_str());
 	double took = double(get_json_int(meta, "end_ts") - get_json_int(meta, "start_ts")) / billion;
 	uint64_t _n_records = get_json_int(meta, "n_records");
