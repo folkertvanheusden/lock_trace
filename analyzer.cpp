@@ -816,7 +816,7 @@ std::map<std::string, uint64_t> data_stats(const lock_trace_item_t *const data, 
 	return out;
 }
 
-void emit_meta_data(FILE *fh, const json_t *const meta, const std::string & core_file_in, const std::string & trace_file, const lock_trace_item_t *const data, const uint64_t n_records)
+void emit_meta_data(FILE *const fh, const json_t *const meta, const std::string & core_file_in, const std::string & trace_file, const lock_trace_item_t *const data, const uint64_t n_records)
 {
 	fprintf(fh, "<h2 id=\"meta\">1. META DATA</h2>\n");
 	fprintf(fh, "<table><tr><th colspan=2>meta data</th></tr>\n");
@@ -1132,6 +1132,7 @@ std::pair<std::vector<std::pair<std::pair<const void *, const void *>, uint64_t>
 
 		if (do_count) {
 			std::vector<std::pair<const void *const, int> *> ps;
+			// much slower: std::transform(locked.begin(), locked.end(), std::back_inserter(ps), [](std::pair<const void *const, int> &mapItem) { return &mapItem; });
 			for(auto & e : locked)
 				ps.push_back(&e);
 
@@ -1183,7 +1184,7 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 	auto v = pair.first;
 	auto seen_count = pair.second;
 
-	std::sort(v.begin(), v.end(), [=](std::pair<std::pair<const void *, const void *>, uint64_t> & a, std::pair<std::pair<const void *, const void *>, uint64_t> & b) {
+	std::sort(v.begin(), v.end(), [=](const std::pair<std::pair<const void *, const void *>, uint64_t> & a, const std::pair<std::pair<const void *, const void *>, uint64_t> & b) {
 	    return a.second > b.second;
 	});
 
@@ -1204,7 +1205,7 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 		v2.push_back({ v_entry.first, closeness });
 	}
 
-	std::sort(v2.begin(), v2.end(), [=](std::pair<std::pair<const void *, const void *>, double> & a, std::pair<std::pair<const void *, const void *>, double> & b) {
+	std::sort(v2.begin(), v2.end(), [=](const std::pair<std::pair<const void *, const void *>, double> & a, const std::pair<std::pair<const void *, const void *>, double> & b) {
 	    return a.second > b.second;
 	});
 
