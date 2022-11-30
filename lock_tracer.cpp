@@ -55,8 +55,12 @@ static char *data_filename = nullptr;
 
 static bool verbose = false;
 
+static std::string signal_trigger_dump;
+
 static bool fork_warning = false;
 static bool exited = false;
+
+static bool capture_sigterm = false;
 
 static thread_local bool prevent_backtrace = false;
 
@@ -691,6 +695,15 @@ int pthread_setname_np(pthread_t thread, const char *name) throw ()
 	return (*org_pthread_setname_np_h)(thread, name);
 }
 
+void sigterm_handler(int sig)
+{
+	color("\033[0;31m");
+
+	fprintf(stderr, "Caught SIGTERM\n");
+
+	exit(-1);
+}
+
 void __attribute__ ((constructor)) start_lock_tracing()
 {
 	color("\033[0;31m");
@@ -708,6 +721,13 @@ void __attribute__ ((constructor)) start_lock_tracing()
 		n_records = atoll(env_n_records);
 
 		emit_count_threshold = n_records / 10;
+	}
+
+	capture_sigterm = getenv("CAPTURE_SIGTERM") != nullptr;
+	if (capture_sigterm) {
+		fprintf(stderr, "Capture SIGTERM enabled\n");
+
+		signal(SIGTERM, sigterm_handler);
 	}
 
 	verbose = getenv("TRACE_VERBOSE") != nullptr;
