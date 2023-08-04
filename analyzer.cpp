@@ -853,24 +853,24 @@ void emit_meta_data(FILE *const fh, const json_t *const meta, const std::string 
 }
 
 typedef struct {
-	uint64_t mutex_lock_acquire_durations, n_mutex_acquire_locks, mutex_lock_acquire_sd;
+	uint64_t mutex_lock_acquire_durations, n_mutex_acquire_locks, mutex_lock_acquire_sd, mutex_lock_acquire_max;
 } durations_mutex_t;
 
 typedef struct {
-	uint64_t mutex_locked_durations, n_mutex_locked_durations, mutex_locked_durations_sd;
+	uint64_t mutex_locked_durations, n_mutex_locked_durations, mutex_locked_durations_sd, mutex_locked_durations_max;
 } locked_durations_mutex_t;
 
 typedef struct {
-	uint64_t rwlock_r_lock_acquire_durations, n_rwlock_r_acquire_locks, rwlock_r_lock_acquire_sd;
+	uint64_t rwlock_r_lock_acquire_durations, n_rwlock_r_acquire_locks, rwlock_r_lock_acquire_sd, rwlock_r_lock_acquire_max;
 } durations_rwlock_r_t;
 
 typedef struct {
-	uint64_t rwlock_w_lock_acquire_durations, n_rwlock_w_acquire_locks, rwlock_w_lock_acquire_sd;
+	uint64_t rwlock_w_lock_acquire_durations, n_rwlock_w_acquire_locks, rwlock_w_lock_acquire_sd, rwlock_w_lock_acquire_max;
 } durations_rwlock_w_t;
 
 typedef struct {
-	uint64_t rwlock_r_locked_durations, n_rwlock_r_locked, rwlock_r_locked_sd;
-	uint64_t rwlock_w_locked_durations, n_rwlock_w_locked, rwlock_w_locked_sd;
+	uint64_t rwlock_r_locked_durations, n_rwlock_r_locked, rwlock_r_locked_sd, rwlock_r_locked_max;
+	uint64_t rwlock_w_locked_durations, n_rwlock_w_locked, rwlock_w_locked_sd, rwlock_w_locked_max;
 } locked_durations_rwlock_t;
 
 typedef struct {
@@ -918,6 +918,7 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 		if (data[i].la == a_lock) {
 			d.durations_mutex.mutex_lock_acquire_durations += took;
 			d.durations_mutex.mutex_lock_acquire_sd += took * took;
+			d.durations_mutex.mutex_lock_acquire_max = std::max(d.durations_mutex.mutex_lock_acquire_max, took);
 			d.durations_mutex.n_mutex_acquire_locks++;
 
 			pthread_mutex_t *mutex_lock = (pthread_mutex_t *)data[i].lock;
@@ -926,11 +927,12 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 
 			auto it = d.per_mutex_durations.find(mutex_lock);
 			if (it == d.per_mutex_durations.end())
-				d.per_mutex_durations.insert({ mutex_lock, { took, 1, took * took } });
+				d.per_mutex_durations.insert({ mutex_lock, { took, 1, took * took, took } });
 			else {
 				it->second.mutex_lock_acquire_durations += took;
 				it->second.n_mutex_acquire_locks++;
 				it->second.mutex_lock_acquire_sd += took * took;
+				it->second.mutex_lock_acquire_max = std::max(it->second.mutex_lock_acquire_max, took);
 			}
 		}
 		else if (data[i].la == a_unlock) {
@@ -944,16 +946,18 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 				d.locked_durations.mutex_locked_durations += t_delta_took;
 				d.locked_durations.n_mutex_locked_durations++;
 				d.locked_durations.mutex_locked_durations_sd += t_delta_took * t_delta_took;
+				d.locked_durations.mutex_locked_durations_sd = std::max(d.locked_durations.mutex_locked_durations_max, t_delta_took);
 
 				pthread_mutex_t *mutex_lock = (pthread_mutex_t *)data[i].lock;
 
 				auto it = d.per_mutex_locked_durations.find(mutex_lock);
 				if (it == d.per_mutex_locked_durations.end())
-					d.per_mutex_locked_durations.insert({ mutex_lock, { t_delta_took, 1, t_delta_took * t_delta_took } });
+					d.per_mutex_locked_durations.insert({ mutex_lock, { t_delta_took, 1, t_delta_took * t_delta_took, t_delta_took } });
 				else {
 					it->second.mutex_locked_durations += t_delta_took;
 					it->second.n_mutex_locked_durations++;
 					it->second.mutex_locked_durations_sd += t_delta_took * t_delta_took;
+					it->second.mutex_locked_durations_sd = std::max(it->second.mutex_locked_durations_max, t_delta_took);
 				}
 			}
 		}
@@ -964,14 +968,16 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			d.durations_r_rwlock.rwlock_r_lock_acquire_durations += took;
 			d.durations_r_rwlock.n_rwlock_r_acquire_locks++;
 			d.durations_r_rwlock.rwlock_r_lock_acquire_sd += took * took;
+			d.durations_r_rwlock.rwlock_r_lock_acquire_max = std::max(d.durations_r_rwlock.rwlock_r_lock_acquire_max, took);
 			// per lock 'r_took'
 			auto ar_it = d.per_rwlock_r_acquire_durations.find(rwlock_lock);
 			if (ar_it == d.per_rwlock_r_acquire_durations.end())
-				d.per_rwlock_r_acquire_durations.insert({ rwlock_lock, { took, 1, took * took } });
+				d.per_rwlock_r_acquire_durations.insert({ rwlock_lock, { took, 1, took * took, took } });
 			else {
 				ar_it->second.rwlock_r_lock_acquire_durations += took;
 				ar_it->second.n_rwlock_r_acquire_locks++;
 				ar_it->second.rwlock_r_lock_acquire_sd += took * took;
+				ar_it->second.rwlock_r_lock_acquire_max = std::max(ar_it->second.rwlock_r_lock_acquire_max, took);
 			}
 
 			// locked durations
@@ -987,15 +993,17 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 			// acquiring
 			d.durations_w_rwlock.rwlock_w_lock_acquire_durations += took;
 			d.durations_w_rwlock.rwlock_w_lock_acquire_sd += took * took;
+			d.durations_w_rwlock.rwlock_w_lock_acquire_max = std::max(d.durations_w_rwlock.rwlock_w_lock_acquire_max, took);
 			d.durations_w_rwlock.n_rwlock_w_acquire_locks++;
 			// per lock 'w_took'
 			auto aw_it = d.per_rwlock_w_acquire_durations.find(rwlock_lock);
 			if (aw_it == d.per_rwlock_w_acquire_durations.end())
-				d.per_rwlock_w_acquire_durations.insert({ rwlock_lock, { took, 1, took * took } });
+				d.per_rwlock_w_acquire_durations.insert({ rwlock_lock, { took, 1, took * took, took } });
 			else {
 				aw_it->second.rwlock_w_lock_acquire_durations += took;
 				aw_it->second.n_rwlock_w_acquire_locks++;
 				aw_it->second.rwlock_w_lock_acquire_sd += took * took;
+				aw_it->second.rwlock_w_lock_acquire_max = std::max(aw_it->second.rwlock_w_lock_acquire_max, took);
 			}
 
 			// locked durations
@@ -1024,9 +1032,10 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 						it->second.rwlock_w_locked_durations += t_delta_took;
 						it->second.n_rwlock_w_locked++;
 						it->second.rwlock_w_locked_sd += t_delta_took * t_delta_took;
+						it->second.rwlock_w_locked_max = std::max(it->second.rwlock_w_locked_max, t_delta_took);
 					}
 					else {
-						d.per_rwlock_locked_durations.insert({ rwlock_lock, { 0, 0, 0, t_delta_took, 1, t_delta_took * t_delta_took } });
+						d.per_rwlock_locked_durations.insert({ rwlock_lock, { 0, 0, 0, t_delta_took, 1, t_delta_took * t_delta_took, t_delta_took } });
 					}
 				}
 				else if (lock_it->second.r_timestamp > 0) {  // read lock
@@ -1040,9 +1049,10 @@ durations_t do_determine_durations(const lock_trace_item_t *const data, const ui
 						it->second.rwlock_r_locked_durations += t_delta_took;
 						it->second.n_rwlock_r_locked++;
 						it->second.rwlock_r_locked_sd += t_delta_took * t_delta_took;
+						it->second.rwlock_r_locked_max = std::max(it->second.rwlock_r_locked_max, t_delta_took);
 					}
 					else {
-						d.per_rwlock_locked_durations.insert({ rwlock_lock, { t_delta_took, 1, t_delta_took * t_delta_took, 0, 0, 0 } });
+						d.per_rwlock_locked_durations.insert({ rwlock_lock, { t_delta_took, 1, t_delta_took * t_delta_took, 0, 0, 0, t_delta_took } });
 					}
 				}
 			}
@@ -1066,27 +1076,27 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 	// mutex acquisition durations
 	double avg_mutex_lock_acquire_durations = d.durations_mutex.mutex_lock_acquire_durations / double(d.durations_mutex.n_mutex_acquire_locks);
 	double sd_mutex_lock_acquire_durations = sqrt(d.durations_mutex.mutex_lock_acquire_sd / double(d.durations_mutex.n_mutex_acquire_locks) - pow(avg_mutex_lock_acquire_durations, 2.0));
-	fprintf(fh, "<tr><th>mutex</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_lock_acquire_durations / 1000.0, sd_mutex_lock_acquire_durations / 1000.0);
+	fprintf(fh, "<tr><th>mutex</th><td>avg: %.3fus, sd: %.3fus, max: %.3fus</td></tr>\n", avg_mutex_lock_acquire_durations / 1000.0, sd_mutex_lock_acquire_durations / 1000.0, d.durations_mutex.mutex_lock_acquire_max / 1000.);
 
 	// mutex held durations
 	double avg_mutex_locked_durations = d.locked_durations.mutex_locked_durations / double(d.locked_durations.n_mutex_locked_durations);
 	if (d.locked_durations.n_mutex_locked_durations > 1) {
 		double sd_mutex_locked_durations = sqrt(d.locked_durations.mutex_locked_durations_sd / double(d.locked_durations.n_mutex_locked_durations) - pow(avg_mutex_locked_durations, 2.0));
-		fprintf(fh, "<tr><th>mutex held</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0, sd_mutex_locked_durations / 1000.0);
+		fprintf(fh, "<tr><th>mutex held</th><td>avg: %.3fus, sd: %.3fus, max: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0, sd_mutex_locked_durations / 1000.0, d.locked_durations.mutex_locked_durations_max / 1000.);
 	}
 	else {
-		fprintf(fh, "<tr><th>mutex held</th><td>avg: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0);
+		fprintf(fh, "<tr><th>mutex held</th><td>avg: %.3fus, max: %.3fus</td></tr>\n", avg_mutex_locked_durations / 1000.0, d.locked_durations.mutex_locked_durations_max / 1000.);
 	}
 
 	// read lock of r/w locks
 	double avg_rwlock_r_lock_acquire_durations = d.durations_r_rwlock.rwlock_r_lock_acquire_durations / double(d.durations_r_rwlock.n_rwlock_r_acquire_locks);
 	double sd_rwlock_r_lock_acquire_durations = sqrt(d.durations_r_rwlock.rwlock_r_lock_acquire_sd / double(d.durations_r_rwlock.n_rwlock_r_acquire_locks) - pow(avg_rwlock_r_lock_acquire_durations, 2.0));
-	fprintf(fh, "<tr><th>read lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_r_lock_acquire_durations / 1000.0, sd_rwlock_r_lock_acquire_durations / 1000.0);
+	fprintf(fh, "<tr><th>read lock</th><td>avg: %.3fus, sd: %.3fus, max: %.3fus</td></tr>\n", avg_rwlock_r_lock_acquire_durations / 1000.0, sd_rwlock_r_lock_acquire_durations / 1000.0, d.durations_r_rwlock.rwlock_r_lock_acquire_max / 1000.);
 
 	// write lock of r/w locks
 	double avg_rwlock_w_lock_acquire_durations = d.durations_w_rwlock.rwlock_w_lock_acquire_durations / double(d.durations_w_rwlock.n_rwlock_w_acquire_locks);
 	double sd_rwlock_w_lock_acquire_durations = sqrt(d.durations_w_rwlock.rwlock_w_lock_acquire_sd / double(d.durations_w_rwlock.n_rwlock_w_acquire_locks) - pow(avg_rwlock_w_lock_acquire_durations, 2.0));
-	fprintf(fh, "<tr><th>write lock</th><td>avg: %.3fus, sd: %.3fus</td></tr>\n", avg_rwlock_w_lock_acquire_durations / 1000.0, sd_rwlock_w_lock_acquire_durations);
+	fprintf(fh, "<tr><th>write lock</th><td>avg: %.3fus, sd: %.3fus, max: %.3fus</td></tr>\n", avg_rwlock_w_lock_acquire_durations / 1000.0, sd_rwlock_w_lock_acquire_durations, d.durations_w_rwlock.rwlock_w_lock_acquire_max / 1000.);
 
 	fprintf(fh, "</table>\n");
 
@@ -1094,23 +1104,23 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 
 	fprintf(fh, "<h4>acquiration duration</h4>\n");
 	fprintf(fh, "<table>\n");
-	fprintf(fh, "<tr><th>pointer</th><th>average</th><th>standard deviation</th></tr>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>average</th><th>standard deviation</th><th>maximum</th></tr>\n");
 	for(auto entry : d.per_mutex_durations) {
 		double avg = entry.second.mutex_lock_acquire_durations / double(entry.second.n_mutex_acquire_locks);
 		double sd = sqrt(entry.second.mutex_lock_acquire_sd / double(entry.second.n_mutex_acquire_locks) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd, entry.second.mutex_lock_acquire_max * 1.);
 	}
 	fprintf(fh, "</table>\n");
 
 	fprintf(fh, "<h4>mutex held duration</h4>\n");
 	fprintf(fh, "<table>\n");
-	fprintf(fh, "<tr><th>pointer</th><th>average</th><th>standard deviation</th></tr>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>average</th><th>standard deviation</th><th>maximum</th></tr>\n");
 	for(auto entry : d.per_mutex_locked_durations) {
 		double avg = entry.second.mutex_locked_durations / double(entry.second.n_mutex_locked_durations);
 		double sd = sqrt(entry.second.mutex_locked_durations_sd / double(entry.second.n_mutex_locked_durations) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd, entry.second.mutex_locked_durations_max * 1.);
 	}
 	fprintf(fh, "</table>\n");
 
@@ -1118,29 +1128,29 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 
 	fprintf(fh, "<h4>read lock acquiration duration</h4>\n");
 	fprintf(fh, "<table>\n");
-	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th></tr>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th><th>maximum</th></tr>\n");
 	for(auto entry : d.per_rwlock_r_acquire_durations) {
 		double avg = entry.second.rwlock_r_lock_acquire_durations / double(entry.second.n_rwlock_r_acquire_locks);
 		double sd = sqrt(entry.second.rwlock_r_lock_acquire_sd / double(entry.second.n_rwlock_r_acquire_locks) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd, entry.second.rwlock_r_lock_acquire_max * 1.);
 	}
 	fprintf(fh, "</table>\n");
 
 	fprintf(fh, "<h4>write lock acquiration duration</h4>\n");
 	fprintf(fh, "<table>\n");
-	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th></tr>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>r/w</th><th>average</th><th>standard deviation</th><th>maximum</th></tr>\n");
 	for(auto entry : d.per_rwlock_w_acquire_durations) {
 		double avg = entry.second.rwlock_w_lock_acquire_durations / double(entry.second.n_rwlock_w_acquire_locks);
 		double sd = sqrt(entry.second.rwlock_w_lock_acquire_sd / double(entry.second.n_rwlock_w_acquire_locks) - pow(avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd);
+		fprintf(fh, "<tr><th>%s</th><td>%.3fus</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), avg, sd, entry.second.rwlock_w_lock_acquire_max * 1.);
 	}
 	fprintf(fh, "</table>\n");
 
 	fprintf(fh, "<h4>r/w-lock held duration</h4>\n");
 	fprintf(fh, "<table>\n");
-	fprintf(fh, "<tr><th>pointer</th><th>r/w></th><th>average</th><th>standard deviation</th></tr>\n");
+	fprintf(fh, "<tr><th>pointer</th><th>r/w></th><th>average</th><th>standard deviation</th><th>maximum</th></tr>\n");
 	for(auto entry : d.per_rwlock_locked_durations) {
 		double r_avg = entry.second.rwlock_r_locked_durations / double(entry.second.n_rwlock_r_locked);
 		double r_sd = sqrt(entry.second.rwlock_r_locked_sd / double(entry.second.n_rwlock_r_locked) - pow(r_avg, 2.0));
@@ -1148,7 +1158,7 @@ void determine_durations(FILE *const fh, const lock_trace_item_t *const data, co
 		double w_avg = entry.second.rwlock_w_locked_durations / double(entry.second.n_rwlock_w_locked);
 		double w_sd = sqrt(entry.second.rwlock_w_locked_sd / double(entry.second.n_rwlock_w_locked) - pow(r_avg, 2.0));
 
-		fprintf(fh, "<tr><th>%s</th><td>r</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), r_avg, r_sd);
+		fprintf(fh, "<tr><th>%s</th><td>r</td><td>%.3fus</td><td>%.3fus</td><td>%.3fus</td></tr>\n", lookup_symbol(entry.first).c_str(), r_avg, r_sd, entry.second.rwlock_r_locked_max * 1.);
 		fprintf(fh, "<tr><th></th><td>w</td><td>%.3fus</td><td>%.3fus</td></tr>\n", w_avg, w_sd);
 	}
 	fprintf(fh, "</table>\n");
