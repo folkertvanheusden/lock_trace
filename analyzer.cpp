@@ -63,6 +63,32 @@ json_t *load_json(const std::string & filename)
 	return rc;
 }
 
+std::string lock_action_to_name(const lock_action_t la)
+{
+	if (la == a_lock)
+		return "lock";
+	else if (la == a_unlock)
+		return "unlock";
+	else if (la == a_thread_clean)
+		return "thread_clean";
+	else if (la == a_r_lock)
+		return "r_lock";
+	else if (la == a_w_lock)
+		return "w_lock";
+	else if (la == a_rw_unlock)
+		return "rw_unlock";
+	else if (la == a_init)
+		return "init";
+	else if (la == a_destroy)
+		return "destroy";
+	else if (la == a_rw_init)
+		return "rw_init";
+	else if (la == a_rw_destroy)
+		return "rw_destroy";
+
+	return "internal error";
+}
+
 const lock_trace_item_t *load_data(const std::string & filename)
 {
 	int fd = open(filename.c_str(), O_RDONLY);
@@ -302,7 +328,7 @@ std::string lookup_symbol(const void *const p)
 }
 
 #if defined(WITH_BACKTRACE)
-void put_call_trace(FILE *const fh, const lock_trace_item_t & record, const std::string & table_color)
+void put_call_trace_html(FILE *const fh, const lock_trace_item_t & record, const std::string & table_color)
 {
 	fprintf(fh, "<table class=\"%s\">\n", table_color.c_str());
 
@@ -314,6 +340,21 @@ void put_call_trace(FILE *const fh, const lock_trace_item_t & record, const std:
 		fprintf(fh, "<tr><th>%p</th><td>%s</td></tr>\n", record.caller[i], lookup_symbol(record.caller[i]).c_str());
 
 	fprintf(fh, "</table>\n");
+}
+void put_call_trace_text(FILE *const fh, const lock_trace_item_t & record)
+{
+	int d = CALLER_DEPTH - 1;
+	while(d > 0 && record.caller[d] == nullptr)
+		d--;
+
+	if (d >= 0) {
+		fprintf(fh, "\t");
+
+		for(int i=0; i<=d; i++)
+			fprintf(fh, "%p ", record.caller[i]);
+
+		fprintf(fh, "%s", lookup_symbol(record.caller[d]).c_str());
+	}
 }
 #endif
 
@@ -329,7 +370,7 @@ std::string my_ctime(const uint64_t nts)
 	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, int(nts % billion));
 }
 
-void put_record_details(FILE *const fh, const lock_trace_item_t & record, const std::string & base_color)
+void put_record_details_html(FILE *const fh, const lock_trace_item_t & record, const std::string & base_color)
 {
 	fprintf(fh, "<table class=\"%s\">\n", base_color.c_str());
 	fprintf(fh, "<tr><th>tid</th><td>%d</td></tr>\n", record.tid);
@@ -337,17 +378,42 @@ void put_record_details(FILE *const fh, const lock_trace_item_t & record, const 
 	fprintf(fh, "<tr><th>thread name</th><td>%s</td></tr>\n", record.thread_name);
 #endif
 #ifdef MEASURE_TIMING
+	fprintf(fh, "<tr><th>action</th><td>%s</td></tr>\n", lock_action_to_name(record.la).c_str());
+	fprintf(fh, "<tr><th>lock</th><td>%p</td></tr>\n", record.lock);
 	fprintf(fh, "<tr><th>timestamp</th><td>%s</td></tr>\n", my_ctime(record.timestamp).c_str());
 	fprintf(fh, "<tr><th>took</th><td>%.3fus</td></tr>\n", record.lock_took / 1000.0);
 #endif
 
 #if defined(WITH_BACKTRACE)
 	fprintf(fh, "<tr><th>call trace</th><td>");
-	put_call_trace(fh, record, base_color);
+	put_call_trace_html(fh, record, base_color);
 	fprintf(fh, "</td></tr>\n");
 #endif
 
 	fprintf(fh, "</table>\n");
+}
+
+void put_record_details_text(FILE *const fh, const lock_trace_item_t & record)
+{
+	fprintf(fh, "%d", record.tid);
+#ifdef STORE_THREAD_NAME
+	if (record.thread_name[0])
+		fprintf(fh, "\t%s", record.thread_name);
+	else
+		fprintf(fh, "\t-");
+#endif
+#ifdef MEASURE_TIMING
+	fprintf(fh, "\t%s", lock_action_to_name(record.la).c_str());
+	fprintf(fh, "\t%p", record.lock);
+	fprintf(fh, "\t%s", my_ctime(record.timestamp).c_str());
+	fprintf(fh, "\t%.3fus", record.lock_took / 1000.);
+#endif
+
+#if defined(WITH_BACKTRACE)
+	put_call_trace_text(fh, record);
+#endif
+
+	fprintf(fh, "\n");
 }
 
 std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_trace_item_t *const data, const std::vector<size_t> & backtraces)
@@ -384,7 +450,7 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 			// first (correct?)
 			if (dul.latest_records.empty() == false)
 				fprintf(fh, "<h4>first</h4>\n");
-			put_record_details(fh, data[dul.first_record], "red");
+			put_record_details_html(fh, data[dul.first_record], "red");
 
 			// then list all mistakes for this combination, show only unique backtraces
 			if (dul.latest_records.empty() == false) {
@@ -394,7 +460,7 @@ void find_double_un_locks_mutex(FILE *const fh, const lock_trace_item_t *const d
 				auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, dul.latest_records);
 
 				for(auto entry : unique_backtraces) 
-					put_record_details(fh, data[entry.second], "red");
+					put_record_details_html(fh, data[entry.second], "red");
 			}
 
 			fprintf(fh, "<br>\n");
@@ -437,7 +503,7 @@ void list_fuction_call_errors(FILE *const fh, const lock_trace_item_t *const dat
 		auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, it.second);
 
 		for(auto entry : unique_backtraces)  {
-			put_record_details(fh, data[entry.second], "green");
+			put_record_details_html(fh, data[entry.second], "green");
 
 			fprintf(fh, "<br>\n");
 		}
@@ -509,7 +575,7 @@ void find_still_locked_mutex(FILE *const fh, const lock_trace_item_t *const data
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
 		for(auto entry : unique_backtraces) {
-			put_record_details(fh, data[entry.second], "blue");
+			put_record_details_html(fh, data[entry.second], "blue");
 
 			fprintf(fh, "<br>\n");
 		}
@@ -583,7 +649,7 @@ void find_still_locked_rwlock(FILE *const fh, const lock_trace_item_t *const dat
 			fprintf(fh, "<p>One of the following locations did not unlock:</p>\n");
 
 		for(auto entry : unique_backtraces) {
-			put_record_details(fh, data[entry.second], "magenta");
+			put_record_details_html(fh, data[entry.second], "magenta");
 
 			fprintf(fh, "<br>\n");
 		}
@@ -715,7 +781,7 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 			if (dul.latest_records.empty() == false)
 				fprintf(fh, "<h4>first</h4>\n");
 
-			put_record_details(fh, data[dul.first_record], "yellow");
+			put_record_details_html(fh, data[dul.first_record], "yellow");
 
 			// then list all mistakes for this combination, show only unique backtraces
 			if (dul.latest_records.empty() == false) {
@@ -725,7 +791,7 @@ void find_double_un_locks_rwlock(FILE *const fh, const lock_trace_item_t *const 
 				auto unique_backtraces = find_a_record_for_unique_backtrace_hashes(data, dul.latest_records);
 
 				for(auto entry : unique_backtraces) 
-					put_record_details(fh, data[entry.second], "yellow");
+					put_record_details_html(fh, data[entry.second], "yellow");
 			}
 
 			fprintf(fh, "<br>\n");
@@ -1205,7 +1271,7 @@ void where_are_locks_used(FILE *const fh, const lock_trace_item_t *const data, c
 		fprintf(fh, "<tr><td>%s</td><td>\n", lookup_symbol(entry.first).c_str());
 
 		for(const auto & p : entry.second) {
-			put_call_trace(fh, data[p.second], "green");
+			put_call_trace_html(fh, data[p.second], "green");
 
 			fprintf(fh, "<br>\n");
 		}
@@ -1389,12 +1455,23 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 }
 #endif
 
+void emit_trace(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records, const bool html)
+{
+	for(uint64_t i=0; i<n_records; i++) {
+		if (html)
+			put_record_details_html(fh, data[i], "white");
+		else
+			put_record_details_text(fh, data[i]);
+	}
+}
+
 void help()
 {
 	printf("-t file    file name of data.dump.xxx\n");
 	printf("-c file    core file\n");
 	printf("-r file    path to \"eu-addr2line\"\n");
 	printf("-f file    html file to write to\n");
+	printf("-T x       print a trace to the file instead of statistics (x = html or ascii)\n");
 #if HAVE_GVC == 1
 	printf("-C         toggle \"correlation graph\" (very slow!)\n");
 #endif
@@ -1404,9 +1481,11 @@ int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
 	bool run_correlate = false;
+	bool print_trace = false;
+	bool is_html = false;
 
 	int c = 0;
-	while((c = getopt(argc, argv, "t:c:r:f:hC")) != -1) {
+	while((c = getopt(argc, argv, "t:c:r:f:T:hC")) != -1) {
 		if (c == 't')
 			trace_file = optarg;
 		else if (c == 'c')
@@ -1419,6 +1498,11 @@ int main(int argc, char *argv[])
 		else if (c == 'C')
 			run_correlate = true;
 #endif
+		else if (c == 'T') {
+			print_trace = true;
+
+			is_html = strcasecmp(optarg, "html") == 0;
+		}
 		else if (c == 'h') {
 			help();
 			return 0;
@@ -1455,30 +1539,34 @@ int main(int argc, char *argv[])
 
 	const uint64_t n_records = get_json_int(meta, "n_records");
 
-	put_html_header(fh, run_correlate);
+	if (print_trace)
+		emit_trace(fh, data, n_records, is_html);
+	else {
+		put_html_header(fh, run_correlate);
 
-	emit_meta_data(fh, meta, core_file, trace_file, data, n_records);
+		emit_meta_data(fh, meta, core_file, trace_file, data, n_records);
 
-	determine_durations(fh, data, n_records);
+		determine_durations(fh, data, n_records);
 
-	list_fuction_call_errors(fh, data, n_records);
+		list_fuction_call_errors(fh, data, n_records);
 
-	find_double_un_locks_mutex(fh, data, n_records);
+		find_double_un_locks_mutex(fh, data, n_records);
 
-	find_still_locked_mutex(fh, data, n_records);
+		find_still_locked_mutex(fh, data, n_records);
 
-	find_double_un_locks_rwlock(fh, data, n_records);
+		find_double_un_locks_rwlock(fh, data, n_records);
 
-	find_still_locked_rwlock(fh, data, n_records);
+		find_still_locked_rwlock(fh, data, n_records);
 
-	where_are_locks_used(fh, data, n_records);
+		where_are_locks_used(fh, data, n_records);
 
 #if HAVE_GVC == 1
-	if (run_correlate)
-		correlate(fh, data, n_records);
+		if (run_correlate)
+			correlate(fh, data, n_records);
 #endif
 
-	put_html_tail(fh);
+		put_html_tail(fh);
+	}
 
 	fclose(fh);
 
