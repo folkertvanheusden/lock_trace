@@ -1,4 +1,4 @@
-// (C) 2021 by folkert@vanheusden.com
+// (C) 2021-2023 by folkert@vanheusden.com
 // released under Apache license v2.0
 
 #include "config.h"
@@ -14,6 +14,7 @@
 #include <jansson.h>
 #include <map>
 #include <math.h>
+#include <optional>
 #include <set>
 #include <stdarg.h>
 #include <stdint.h>
@@ -392,7 +393,7 @@ std::string my_ctime(const uint64_t nts)
 	struct tm tm { 0 };
 	localtime_r(&t, &tm);
 
-	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%06d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, int(nts % billion));
+	return myformat("%04d-%02d-%02d %02d:%02d:%02d.%09d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, int(nts % billion));
 }
 
 void put_record_details_html(FILE *const fh, const lock_trace_item_t & record, const std::string & base_color)
@@ -1492,19 +1493,20 @@ void emit_trace(FILE *const fh, const lock_trace_item_t *const data, const uint6
 
 void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uint64_t n_records)
 {
-	std::map<void *, std::multiset<std::pair<void *, int> > > locks;
+	std::map<void *, std::multiset<std::pair<void *, uint64_t> > > locks;
 
 	for(uint64_t i=0; i<n_records; i++) {
+		std::optional<uint64_t> erase_index;
+
 		void *caller = data[i].caller;
-		int   tid    = data[i].tid;
 
 		if (data[i].la == a_lock || data[i].la == a_r_lock || data[i].la == a_w_lock) {
 			auto it = locks.find(data[i].lock);
 
 			if (it == locks.end())
-				locks.insert({ data[i].lock, { { caller, tid } } });
+				locks.insert({ data[i].lock, { { caller, i } } });
 			else
-				it->second.insert({ caller, tid });
+				it->second.insert({ caller, i });
 		}
 		else if (data[i].la == a_unlock || data[i].la == a_rw_unlock) {
 			auto it = locks.find(data[i].lock);
@@ -1513,7 +1515,8 @@ void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uin
 				bool found = false;
 
 				for(auto cit = it->second.begin(); cit != it->second.end(); cit++) {
-					if (cit->second == data[i].tid) {
+					if (data[cit->second].tid == data[i].tid) {
+						erase_index = cit->second;
 						it->second.erase(cit);
 						found = true;
 						break;
@@ -1532,7 +1535,10 @@ void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uin
 
 		bool first = true;
 		for(auto & rec: locks.find(data[i].lock)->second)
-			fprintf(fh, "%c%p|%d", first ? '\t' : ' ', rec.first, rec.second), first = false;
+			fprintf(fh, "%c%p|%d/%s", first ? '\t' : ' ', rec.first, data[rec.second].tid, data[rec.second].thread_name), first = false;
+
+		if (erase_index.has_value())
+			fprintf(fh, "\t[%.9f|%d/%s]", (data[i].timestamp - data[erase_index.value()].timestamp) / 1000000000., data[erase_index.value()].tid, data[erase_index.value()].thread_name);
 
 		fprintf(fh, "\n");
 	}
