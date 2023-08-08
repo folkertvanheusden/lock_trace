@@ -1491,9 +1491,20 @@ void emit_trace(FILE *const fh, const lock_trace_item_t *const data, const uint6
 	}
 }
 
-void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uint64_t n_records)
+void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uint64_t n_records, const bool html)
 {
 	std::map<void *, std::multiset<std::pair<void *, uint64_t> > > locks;
+
+	if (html) {
+		fprintf(fh, "<!doctype html>\n");
+		fprintf(fh, "<html>\n");
+		fprintf(fh, "<style>.svgbox{height:768px;width:1024px;overflow:scroll}thead th{ background: #ffb0b0}table{font-size:16px;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{margin-top:2.2em;}</style>\n");
+		fprintf(fh, "<meta charset=\"utf-8\">\n");
+		fprintf(fh, "<head><script src=\"https://vanheusden.com/lock_tracer/sorttable.js\"></script></head>\n");
+		fprintf(fh, "<body>\n");
+		fprintf(fh, "<table class=\"sortable\">\n");
+		fprintf(fh, "<tr><th>when</th><th>lock pointer</th><th>action</th><th>lockers</th><th colspan=\"3\">duration of unlocker</th></tr>\n");
+	}
 
 	for(uint64_t i=0; i<n_records; i++) {
 		std::optional<uint64_t> erase_index;
@@ -1531,16 +1542,44 @@ void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uin
 			}
 		}
 
-		fprintf(fh, "%s\t%p\t%s", my_ctime(data[i].timestamp).c_str(), data[i].lock, lock_action_to_name(data[i].la).c_str());
+		if (html)
+			fprintf(fh, "<tr><td>%s</td><td><span title=\"%s\">%p</span></td><td>%s</td>", my_ctime(data[i].timestamp).c_str(), lookup_symbol(data[i].lock).c_str(), data[i].lock, lock_action_to_name(data[i].la).c_str());
+		else
+			fprintf(fh, "%s\t%p\t%s", my_ctime(data[i].timestamp).c_str(), data[i].lock, lock_action_to_name(data[i].la).c_str());
+
+		std::string lockers;
 
 		bool first = true;
-		for(auto & rec: locks.find(data[i].lock)->second)
-			fprintf(fh, "%c%p|%d/%s", first ? '\t' : ' ', rec.first, data[rec.second].tid, data[rec.second].thread_name), first = false;
+		for(auto & rec: locks.find(data[i].lock)->second) {
+			if (html)
+				lockers += myformat(" <span title=\"%s\">%p</span>|%d/%s", lookup_symbol(rec.first).c_str(), rec.first, data[rec.second].tid, data[rec.second].thread_name);
+			else
+				fprintf(fh, "%c%p|%d/%s", first ? '\t' : ' ', rec.first, data[rec.second].tid, data[rec.second].thread_name), first = false;
+		}
 
-		if (erase_index.has_value())
-			fprintf(fh, "\t[%.9f|%d/%s]", (data[i].timestamp - data[erase_index.value()].timestamp) / 1000000000., data[erase_index.value()].tid, data[erase_index.value()].thread_name);
+		if (html)
+			fprintf(fh, "<td>%s</td>", lockers.c_str());
 
-		fprintf(fh, "\n");
+		if (erase_index.has_value()) {
+			if (html)
+				fprintf(fh, "<td>| %.9f </td><td>%d</td><td>%s</td>", (data[i].timestamp - data[erase_index.value()].timestamp) / 1000000000., data[erase_index.value()].tid, data[erase_index.value()].thread_name);
+			else
+				fprintf(fh, "\t[%.9f|%d/%s]", (data[i].timestamp - data[erase_index.value()].timestamp) / 1000000000., data[erase_index.value()].tid, data[erase_index.value()].thread_name);
+		}
+		else if (html) {
+			fprintf(fh, "<td></td><td></td><td></td>");
+		}
+
+		if (html)
+			fprintf(fh, "</tr>\n");
+		else
+			fprintf(fh, "\n");
+	}
+
+	if (html) {
+		fprintf(fh, "</table>\n");
+		fprintf(fh, "</body>\n");
+		fprintf(fh, "</html>\n");
 	}
 }
 
@@ -1551,7 +1590,7 @@ void help()
 	printf("-r file    path to \"eu-addr2line\"\n");
 	printf("-f file    html file to write to\n");
 	printf("-T x       print a trace to the file instead of statistics (x = html or ascii)\n");
-	printf("-Q         show which other instances are trying to lock on a lock\n");
+	printf("-Q x       show which other instances are trying to lock on a lock (x = html or ascii)\n");
 #if HAVE_GVC == 1
 	printf("-C         toggle \"correlation graph\" (very slow!)\n");
 #endif
@@ -1566,7 +1605,7 @@ int main(int argc, char *argv[])
 	bool print_locking = false;
 
 	int c = 0;
-	while((c = getopt(argc, argv, "t:c:r:f:T:QhC")) != -1) {
+	while((c = getopt(argc, argv, "t:c:r:f:T:Q:hC")) != -1) {
 		if (c == 't')
 			trace_file = optarg;
 		else if (c == 'c')
@@ -1584,8 +1623,11 @@ int main(int argc, char *argv[])
 
 			is_html = strcasecmp(optarg, "html") == 0;
 		}
-		else if (c == 'Q')
+		else if (c == 'Q') {
 			print_locking = true;
+
+			is_html = strcasecmp(optarg, "html") == 0;
+		}
 		else if (c == 'h') {
 			help();
 			return 0;
@@ -1627,7 +1669,7 @@ int main(int argc, char *argv[])
 	const uint64_t ug_n_records = get_json_int(meta, "ug_n_records");
 
 	if (print_locking)
-		emit_locks(fh, ug_data, ug_n_records);
+		emit_locks(fh, ug_data, ug_n_records, is_html);
 	else if (print_trace)
 		emit_trace(fh, data, n_records, is_html);
 	else {
