@@ -33,3 +33,19 @@ typedef struct {
 	// return code of the pthread function called
 	int rc;
 } lock_trace_item_t;
+
+#ifdef WITH_USAGE_GROUPS
+typedef struct {
+	void *caller;
+	void *lock;
+	int tid;
+	lock_action_t la; 
+#ifdef MEASURE_TIMING
+	uint64_t timestamp;
+#endif
+#ifdef STORE_THREAD_NAME
+	// the one in linux is said to be max. 16 characters including 0x00 (pthread_setname_np)
+	char thread_name[16];
+#endif
+} lock_usage_groups_t;
+#endif

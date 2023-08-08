@@ -114,6 +114,31 @@ const lock_trace_item_t *load_data(const std::string & filename)
 	return data;
 }
 
+const lock_usage_groups_t *load_ug_data(const std::string & filename)
+{
+	int fd = open(filename.c_str(), O_RDONLY);
+	if (fd == -1) {
+		fprintf(stderr, "Failed opening %s: %s\n", filename.c_str(), strerror(errno));
+		return nullptr;
+	}
+
+	struct stat st;
+	fstat(fd, &st);
+
+	lock_usage_groups_t *data = (lock_usage_groups_t *)mmap(nullptr, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+	if (data == MAP_FAILED) {
+		fprintf(stderr, "mmap failed: %s\n", strerror(errno));
+		return nullptr;
+	}
+
+	if (posix_madvise(data, st.st_size, POSIX_MADV_SEQUENTIAL) == -1)
+		perror("posix_madvise");
+
+	close(fd);
+
+	return data;
+}
+
 typedef uint64_t hash_t;
 
 uint64_t MurmurHash64A(const void *const key, const int len, const uint64_t seed)
@@ -1465,6 +1490,54 @@ void emit_trace(FILE *const fh, const lock_trace_item_t *const data, const uint6
 	}
 }
 
+void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uint64_t n_records)
+{
+	std::map<void *, std::multiset<std::pair<void *, int> > > locks;
+
+	for(uint64_t i=0; i<n_records; i++) {
+		void *caller = data[i].caller;
+		int   tid    = data[i].tid;
+
+		if (data[i].la == a_lock || data[i].la == a_r_lock || data[i].la == a_w_lock) {
+			auto it = locks.find(data[i].lock);
+
+			if (it == locks.end())
+				locks.insert({ data[i].lock, { { caller, tid } } });
+			else
+				it->second.insert({ caller, tid });
+		}
+		else if (data[i].la == a_unlock || data[i].la == a_rw_unlock) {
+			auto it = locks.find(data[i].lock);
+
+			if (it != locks.end()) {
+				bool found = false;
+
+				for(auto cit = it->second.begin(); cit != it->second.end(); cit++) {
+					if (cit->second == data[i].tid) {
+						it->second.erase(cit);
+						found = true;
+						break;
+					}
+				}
+
+				if (!found)
+					printf("caller %p not found in list for %p\n", caller, data[i].lock);
+			}
+			else {
+				printf("lock %p not found\n", data[i].lock);
+			}
+		}
+
+		fprintf(fh, "%s\t%p\t%s", my_ctime(data[i].timestamp).c_str(), data[i].lock, lock_action_to_name(data[i].la).c_str());
+
+		bool first = true;
+		for(auto & rec: locks.find(data[i].lock)->second)
+			fprintf(fh, "%c%p|%d", first ? '\t' : ' ', rec.first, rec.second), first = false;
+
+		fprintf(fh, "\n");
+	}
+}
+
 void help()
 {
 	printf("-t file    file name of data.dump.xxx\n");
@@ -1472,6 +1545,7 @@ void help()
 	printf("-r file    path to \"eu-addr2line\"\n");
 	printf("-f file    html file to write to\n");
 	printf("-T x       print a trace to the file instead of statistics (x = html or ascii)\n");
+	printf("-Q         show which other instances are trying to lock on a lock\n");
 #if HAVE_GVC == 1
 	printf("-C         toggle \"correlation graph\" (very slow!)\n");
 #endif
@@ -1483,9 +1557,10 @@ int main(int argc, char *argv[])
 	bool run_correlate = false;
 	bool print_trace = false;
 	bool is_html = false;
+	bool print_locking = false;
 
 	int c = 0;
-	while((c = getopt(argc, argv, "t:c:r:f:T:hC")) != -1) {
+	while((c = getopt(argc, argv, "t:c:r:f:T:QhC")) != -1) {
 		if (c == 't')
 			trace_file = optarg;
 		else if (c == 'c')
@@ -1503,6 +1578,8 @@ int main(int argc, char *argv[])
 
 			is_html = strcasecmp(optarg, "html") == 0;
 		}
+		else if (c == 'Q')
+			print_locking = true;
 		else if (c == 'h') {
 			help();
 			return 0;
@@ -1531,6 +1608,8 @@ int main(int argc, char *argv[])
 
 	const lock_trace_item_t *const data = load_data(get_json_string(meta, "measurements"));
 
+	const lock_usage_groups_t *const ug_data = load_ug_data(get_json_string(meta, "ug_measurements"));
+
 	FILE *fh = fopen(output_file.c_str(), "w");
 	if (!fh) {
 		fprintf(stderr, "Failed to create %s: %s\n", output_file.c_str(), strerror(errno));
@@ -1539,7 +1618,11 @@ int main(int argc, char *argv[])
 
 	const uint64_t n_records = get_json_int(meta, "n_records");
 
-	if (print_trace)
+	const uint64_t ug_n_records = get_json_int(meta, "ug_n_records");
+
+	if (print_locking)
+		emit_locks(fh, ug_data, ug_n_records);
+	else if (print_trace)
 		emit_trace(fh, data, n_records, is_html);
 	else {
 		put_html_header(fh, run_correlate);

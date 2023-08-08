@@ -15,6 +15,11 @@
 
 #define WITH_COLORS
 
+// This doubles the memory usage but allows you to see which
+// other places are trying to get a certain lock at a point
+// in time.
+#define WITH_USAGE_GROUPS
+
 // If you don't care about timing measurements, then comment out
 // 'MEASURE_TIMING'. this makes measuring a bit faster(!)
 #define USE_CLOCK CLOCK_REALTIME

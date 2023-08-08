@@ -93,6 +93,14 @@ static uint64_t global_start_ts = get_ns();
 static std::atomic<std::uint64_t> items_idx { 0 };
 static lock_trace_item_t *items = nullptr;
 
+#ifdef WITH_USAGE_GROUPS
+static std::atomic<std::uint64_t> ug_items_idx { 0 };
+static lock_usage_groups_t *ug_items = nullptr;
+static size_t ug_length = 0;
+static int ug_mmap_fd = -1;
+static char *ug_data_filename = nullptr;
+#endif
+
 static std::atomic<std::uint64_t> cnt_mutex_trylock { 0 };
 static std::atomic<std::uint64_t> cnt_rwlock_try_rdlock { 0 };
 static std::atomic<std::uint64_t> cnt_rwlock_try_timedrdlock { 0 };
@@ -304,6 +312,39 @@ static void store_mutex_info(pthread_mutex_t *mutex, lock_action_t la, uint64_t 
 	}
 }
 
+#ifdef WITH_USAGE_GROUPS
+void store_lock(void *lock, void *caller, lock_action_t la)
+{
+	if (unlikely(!ug_items)) {
+		show_items_buffer_not_allocated_error();
+		return;
+	}
+
+	uint64_t cur_idx = ug_items_idx++;
+
+	if (likely(cur_idx < n_records)) {
+		ug_items[cur_idx].lock = lock;
+		ug_items[cur_idx].tid = _gettid();
+		ug_items[cur_idx].la = la;
+#ifdef MEASURE_TIMING
+		ug_items[cur_idx].timestamp = get_ns();
+#endif
+		ug_items[cur_idx].caller = caller;
+#ifdef STORE_THREAD_NAME
+		check_tid_names_lock_functions();
+
+		if ((*org_pthread_rwlock_rdlock_h)(&tid_names_lock) == 0) {
+			auto it = tid_names->find(ug_items[cur_idx].tid);
+			if (it != tid_names->end())
+				memcpy(ug_items[cur_idx].thread_name, it->second.c_str(), std::min(size_t(16), it->second.size() + 1));
+
+			(*org_pthread_rwlock_unlock_h)(&tid_names_lock);
+		}
+#endif
+	}
+}
+#endif
+
 #if (defined(PREVENT_RECURSION) || defined(SHALLOW_BACKTRACE)) && defined(WITH_BACKTRACE)
 #define STORE_MUTEX_INFO(a, b, c, d) store_mutex_info(a, b, c, d, __builtin_return_address(0))
 #else
@@ -380,6 +421,10 @@ int pthread_mutex_lock(pthread_mutex_t *mutex) throw ()
 		mutex->__data.__kind = PTHREAD_MUTEX_ERRORCHECK;
 #endif
 
+#ifdef WITH_USAGE_GROUPS
+	store_lock(mutex, __builtin_return_address(0), a_lock);
+#endif
+
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_mutex_lock_h)(mutex);
 	uint64_t end_ts = get_ns();
@@ -452,6 +497,12 @@ int pthread_mutex_trylock(pthread_mutex_t *mutex) throw ()
 
 	int rc = (*org_pthread_mutex_trylock_h)(mutex);
 
+#ifdef WITH_USAGE_GROUPS
+	// after! as only here is known if it would succeed or not
+	if (rc == 0)
+		store_lock(mutex, __builtin_return_address(0), a_lock);
+#endif
+
 	STORE_MUTEX_INFO(mutex, a_lock, 0, rc);
 
 	return rc;
@@ -463,6 +514,10 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) throw ()
 		org_pthread_mutex_unlock_h = (org_pthread_mutex_unlock)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 
 	mutex_sanity_check(mutex, __builtin_return_address(0));
+
+#ifdef WITH_USAGE_GROUPS
+	store_lock(mutex, __builtin_return_address(0), a_unlock);
+#endif
 
 	int rc = (*org_pthread_mutex_unlock_h)(mutex);
 
@@ -566,6 +621,10 @@ int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock) throw ()
 
 	rwlock_sanity_check(rwlock, __builtin_return_address(0));
 
+#ifdef WITH_USAGE_GROUPS
+	store_lock(rwlock, __builtin_return_address(0), a_r_lock);
+#endif
+
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_rdlock_h)(rwlock);
 	uint64_t end_ts = get_ns();
@@ -586,6 +645,11 @@ int pthread_rwlock_tryrdlock(pthread_rwlock_t *rwlock) throw ()
 
 	int rc = (*org_pthread_rwlock_tryrdlock_h)(rwlock);
 
+#ifdef WITH_USAGE_GROUPS
+	if (rc == 0)
+		store_lock(rwlock, __builtin_return_address(0), a_r_lock);
+#endif
+
 	STORE_RWLOCK_INFO(rwlock, a_r_lock, 0, rc);
 
 	return rc;
@@ -604,6 +668,11 @@ int pthread_rwlock_timedrdlock(pthread_rwlock_t *rwlock, const struct timespec *
 	int rc = (*org_pthread_rwlock_timedrdlock_h)(rwlock, abstime);
 	uint64_t end_ts = get_ns();
 
+#ifdef WITH_USAGE_GROUPS
+	if (rc == 0)
+		store_lock(rwlock, __builtin_return_address(0), a_r_lock);
+#endif
+
 	// TODO seperate a_r_lock for timed locks as they may take quite
 	// a bit longer or add a flag which tells so
 	STORE_RWLOCK_INFO(rwlock, a_r_lock, end_ts - start_ts, rc);
@@ -617,6 +686,10 @@ int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock) throw ()
 		org_pthread_rwlock_wrlock_h = (org_pthread_rwlock_wrlock)dlsym(RTLD_NEXT, "pthread_rwlock_wrlock");
 
 	rwlock_sanity_check(rwlock, __builtin_return_address(0));
+
+#ifdef WITH_USAGE_GROUPS
+	store_lock(rwlock, __builtin_return_address(0), a_w_lock);
+#endif
 
 	uint64_t start_ts = get_ns();
 	int rc = (*org_pthread_rwlock_wrlock_h)(rwlock);
@@ -638,6 +711,11 @@ int pthread_rwlock_trywrlock(pthread_rwlock_t *rwlock) throw ()
 
 	int rc = (*org_pthread_rwlock_trywrlock_h)(rwlock);
 
+#ifdef WITH_USAGE_GROUPS
+	if (rc == 0)
+		store_lock(rwlock, __builtin_return_address(0), a_w_lock);
+#endif
+
 	STORE_RWLOCK_INFO(rwlock, a_w_lock, 0, rc);
 
 	return rc;
@@ -656,6 +734,11 @@ int pthread_rwlock_timedwrlock(pthread_rwlock_t *rwlock, const struct timespec *
 	int rc = (*org_pthread_rwlock_timedwrlock_h)(rwlock, abstime);
 	uint64_t end_ts = get_ns();
 
+#ifdef WITH_USAGE_GROUPS
+	if (rc == 0)
+		store_lock(rwlock, __builtin_return_address(0), a_w_lock);
+#endif
+
 	STORE_RWLOCK_INFO(rwlock, a_w_lock, end_ts - start_ts, rc);
 
 	return rc;
@@ -667,6 +750,10 @@ int pthread_rwlock_unlock(pthread_rwlock_t *rwlock) throw ()
 		org_pthread_rwlock_unlock_h = (org_pthread_rwlock_unlock)dlsym(RTLD_NEXT, "pthread_rwlock_unlock");
 
 	rwlock_sanity_check(rwlock, __builtin_return_address(0));
+
+#ifdef WITH_USAGE_GROUPS
+	store_lock(rwlock, __builtin_return_address(0), a_rw_unlock);
+#endif
 
 	int rc = (*org_pthread_rwlock_unlock_h)(rwlock);
 
@@ -767,6 +854,30 @@ void __attribute__ ((constructor)) start_lock_tracing()
 
 	if (posix_madvise(items, length, POSIX_MADV_SEQUENTIAL) == -1)
 		perror("madvise");
+
+#ifdef WITH_USAGE_GROUPS
+	asprintf(&ug_data_filename, "ug-measurements-%d.dat", getpid());
+
+	ug_mmap_fd = open(ug_data_filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+	if (ug_mmap_fd == -1) {
+		fprintf(stderr, "ERROR: cannot create usage-groups data file %s: %s\n", ug_data_filename, strerror(errno));
+		color("\033[0m");
+		_exit(1);
+	}
+
+	ug_length = n_records * sizeof(lock_usage_groups_t);
+
+	if (ftruncate(ug_mmap_fd, ug_length) == -1) {
+		fprintf(stderr, "ERROR: problem reserving space on disk: %s\n", strerror(errno));
+		color("\033[0m");
+		_exit(1);
+	}
+
+	ug_items = (lock_usage_groups_t *)mmap(nullptr, n_records * sizeof(lock_usage_groups_t), PROT_WRITE | PROT_READ, MAP_SHARED | MAP_POPULATE, ug_mmap_fd, 0);
+
+	if (posix_madvise(ug_items, ug_length, POSIX_MADV_SEQUENTIAL) == -1)
+		perror("madvise");
+#endif
 
 	tid_names = new std::map<int, std::string>();
 
@@ -882,6 +993,10 @@ void exit(int status) throw ()
 
 		emit_key_value(obj, "measurements", data_filename);
 
+#ifdef WITH_USAGE_GROUPS
+		emit_key_value(obj, "ug_measurements", ug_data_filename);
+#endif
+
 		emit_key_value(obj, "cnt_mutex_trylock", cnt_mutex_trylock);
 		emit_key_value(obj, "cnt_rwlock_try_rdlock", cnt_rwlock_try_rdlock);
 		emit_key_value(obj, "cnt_rwlock_try_timedrdlock", cnt_rwlock_try_timedrdlock);
@@ -897,6 +1012,8 @@ void exit(int status) throw ()
 
 		emit_key_value(obj, "n_records", n_rec_inserted);
 		emit_key_value(obj, "n_records_max", n_records);
+
+		emit_key_value(obj, "ug_n_records", std::min(uint64_t(ug_items_idx), n_records));
 
 		fprintf(fh, "%s\n", json_dumps(obj, JSON_COMPACT));
 		json_decref(obj);
