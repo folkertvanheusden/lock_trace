@@ -33,6 +33,8 @@
 std::string resolver = "/usr/bin/eu-addr2line";
 std::string core_file, exe_file;
 
+typedef enum { UG_HTML, UG_TEXT, UG_SQL } ug_output_t;
+
 std::string myformat(const char *const fmt, ...)
 {
 	char *buffer = nullptr;
@@ -367,6 +369,7 @@ void put_call_trace_html(FILE *const fh, const lock_trace_item_t & record, const
 
 	fprintf(fh, "</table>\n");
 }
+
 void put_call_trace_text(FILE *const fh, const lock_trace_item_t & record)
 {
 	int d = CALLER_DEPTH - 1;
@@ -440,6 +443,19 @@ void put_record_details_text(FILE *const fh, const lock_trace_item_t & record)
 #endif
 
 	fprintf(fh, "\n");
+}
+
+void put_record_details_sql(FILE *const fh, const lock_trace_item_t & record, const uint64_t nr)
+{
+	fprintf(fh, "INSERT INTO lock_trace(nr, tid, thread_name, action, lock, timestamp, took) "
+		    "VALUES(%zu, %d, \"%s\", \"%s\", \"%s\", %.9f, %.6f);\n",
+		    nr,
+		    record.tid,
+		    record.thread_name,
+		    lock_action_to_name(record.la).c_str(),
+		    myformat("%p", record.lock).c_str(),
+		    record.timestamp / 1000000000.,
+		    record.lock_took / 1000.);
 }
 
 std::map<hash_t, size_t> find_a_record_for_unique_backtrace_hashes(const lock_trace_item_t *const data, const std::vector<size_t> & backtraces)
@@ -1481,21 +1497,34 @@ void correlate(FILE *const fh, const lock_trace_item_t *const data, const uint64
 }
 #endif
 
-void emit_trace(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records, const bool html)
+void emit_trace(FILE *const fh, const lock_trace_item_t *const data, const uint64_t n_records, const ug_output_t output_mode)
 {
-	for(uint64_t i=0; i<n_records; i++) {
-		if (html)
-			put_record_details_html(fh, data[i], "white");
-		else
-			put_record_details_text(fh, data[i]);
+	if (output_mode == UG_SQL) {
+		fprintf(fh, "PRAGMA journal_mode = OFF; PRAGMA synchronous = 0; PRAGMA cache_size = 1000000; PRAGMA locking_mode = EXCLUSIVE; PRAGMA temp_store = MEMORY;\n");
+
+		fprintf(fh, "CREATE TABLE lock_trace(nr int NOT NULL, tid int NOT NULL, thread_name char(16) NOT NULL, action VARCHAR(16) NOT NULL, lock VARCHAR(20) NOT NULL, timestamp datetime(9), took double);\n");
+
+		fprintf(fh, "BEGIN TRANSACTION;\n");
 	}
+
+	for(uint64_t i=0; i<n_records; i++) {
+		if (output_mode == UG_HTML)
+			put_record_details_html(fh, data[i], "white");
+		else if (output_mode == UG_TEXT)
+			put_record_details_text(fh, data[i]);
+		else if (output_mode == UG_SQL)
+			put_record_details_sql(fh, data[i], i);
+	}
+
+	if (output_mode == UG_SQL)
+		fprintf(fh, "COMMIT;\n");
 }
 
-void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uint64_t n_records, const bool html)
+void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uint64_t n_records, const ug_output_t mode)
 {
 	std::map<void *, std::multiset<std::pair<void *, uint64_t> > > locks;
 
-	if (html) {
+	if (mode == UG_HTML) {
 		fprintf(fh, "<!doctype html>\n");
 		fprintf(fh, "<html>\n");
 		fprintf(fh, "<style>.svgbox{height:768px;width:1024px;overflow:scroll}thead th{ background: #ffb0b0}table{font-size:16px;border-collapse:collapse;border-spacing:0;}td,th{border:1px solid #ddd;text-align:left;padding:8px}tr:nth-child(even){background-color:#f2f2f2}.green{background-color:#c0ffc0}.red{background-color:#ffc0c0}.blue{background-color:#c0c0ff}.yellow{background-color:#ffffa0}.magenta{background-color:#ffa0ff}th{padding-top:11px;padding-bottom:11px;background-color:#04aa6d;color:#fff}h1,h2,h3{margin-top:2.2em;}</style>\n");
@@ -1504,6 +1533,14 @@ void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uin
 		fprintf(fh, "<body>\n");
 		fprintf(fh, "<table class=\"sortable\">\n");
 		fprintf(fh, "<tr><th>when</th><th>lock pointer</th><th>action</th><th>lockers</th><th colspan=\"3\">duration of unlocker</th></tr>\n");
+	}
+	else if (mode == UG_SQL) {
+		fprintf(fh, "PRAGMA journal_mode = OFF; PRAGMA synchronous = 0; PRAGMA cache_size = 1000000; PRAGMA locking_mode = EXCLUSIVE; PRAGMA temp_store = MEMORY;\n");
+
+		fprintf(fh, "CREATE TABLE lock_usage_groups(nr int NOT NULL, timestamp DATETIME(9) NOT NULL, lock VARCHAR(20) NOT NULL, action VARCHAR(16) NOT NULL, caller VARCHAR(20) NOT NULL, action_by_symbol TEXT NOT NULL);\n");
+		fprintf(fh, "CREATE TABLE unlocked_by(nr int NOT NULL, duration double NOT NULL, tid int NOT NULL, thread_name char(16) NOT NULL, lock_symbol TEXT NOT NULL, caller TEXT NOT NULL, caller_symbol TEXT NOT NULL);\n");
+		fprintf(fh, "CREATE TABLE locked_by(nr int NOT NULL, tid int NOT NULL, thread_name char(16) NOT NULL, symbol_locked_by TEXT NOT NULL);\n");
+		fprintf(fh, "BEGIN TRANSACTION;\n");
 	}
 
 	for(uint64_t i=0; i<n_records; i++) {
@@ -1542,44 +1579,71 @@ void emit_locks(FILE *const fh, const lock_usage_groups_t *const data, const uin
 			}
 		}
 
-		if (html)
+		if (mode == UG_HTML)
 			fprintf(fh, "<tr><td>%s</td><td><span title=\"%s\">%p</span></td><td>%s</td>", my_ctime(data[i].timestamp).c_str(), lookup_symbol(data[i].lock).c_str(), data[i].lock, lock_action_to_name(data[i].la).c_str());
-		else
+		else if (mode == UG_TEXT)
 			fprintf(fh, "%s\t%p\t%s", my_ctime(data[i].timestamp).c_str(), data[i].lock, lock_action_to_name(data[i].la).c_str());
+		else if (mode == UG_SQL) {
+			fprintf(fh, "INSERT INTO lock_usage_groups(nr, timestamp, lock, action, caller, action_by_symbol) "
+					"VALUES(%zu, %.9f, \"%s\", \"%s\", \"%s\", \"%s\");\n",
+					i,
+					data[i].timestamp / 1000000000.,
+					myformat("%p", data[i].lock).c_str(),
+					lock_action_to_name(data[i].la).c_str(),
+					myformat("%p", caller).c_str(),
+					lookup_symbol(caller).c_str()
+					);
+		}
 
 		std::string lockers;
 
 		bool first = true;
 		for(auto & rec: locks.find(data[i].lock)->second) {
-			if (html)
+			if (mode == UG_HTML)
 				lockers += myformat(" <span title=\"%s\">%p</span>|%d/%s", lookup_symbol(rec.first).c_str(), rec.first, data[rec.second].tid, data[rec.second].thread_name);
-			else
+			else if (mode == UG_TEXT)
 				fprintf(fh, "%c%p|%d/%s", first ? '\t' : ' ', rec.first, data[rec.second].tid, data[rec.second].thread_name), first = false;
+			else if (mode == UG_SQL) {
+				fprintf(fh, "INSERT INTO locked_by(nr, tid, thread_name, symbol_locked_by) VALUES(%zu, %d, \"%s\", \"%s\");\n",
+						i, data[rec.second].tid, data[rec.second].thread_name, lookup_symbol(rec.first).c_str());
+			}
 		}
 
-		if (html)
+		if (mode == UG_HTML)
 			fprintf(fh, "<td>%s</td>", lockers.c_str());
 
 		if (erase_index.has_value()) {
-			if (html)
-				fprintf(fh, "<td>| %.9f </td><td>%d</td><td>%s</td>", (data[i].timestamp - data[erase_index.value()].timestamp) / 1000000000., data[erase_index.value()].tid, data[erase_index.value()].thread_name);
-			else
-				fprintf(fh, "\t[%.9f|%d/%s]", (data[i].timestamp - data[erase_index.value()].timestamp) / 1000000000., data[erase_index.value()].tid, data[erase_index.value()].thread_name);
+			double duration = (data[i].timestamp - data[erase_index.value()].timestamp) / 1000000000.;
+
+			if (mode == UG_HTML)
+				fprintf(fh, "<td>| %.9f </td><td>%d</td><td>%s</td>", duration, data[erase_index.value()].tid, data[erase_index.value()].thread_name);
+			else if (mode == UG_TEXT)
+				fprintf(fh, "\t[%.9f|%d/%s]", duration, data[erase_index.value()].tid, data[erase_index.value()].thread_name);
+			else if (mode == UG_SQL) {
+				fprintf(fh, "INSERT INTO unlocked_by(nr, duration, tid, thread_name, lock_symbol, caller, caller_symbol) VALUES(%zu, %.3f, %d, \"%s\", \"%s\", \"%s\", \"%s\");\n",
+						i, duration, data[erase_index.value()].tid, data[erase_index.value()].thread_name, lookup_symbol(data[erase_index.value()].lock).c_str(),
+						myformat("%p", caller).c_str(),
+						lookup_symbol(caller).c_str()
+						);
+			}
 		}
-		else if (html) {
+		else if (mode == UG_HTML) {
 			fprintf(fh, "<td></td><td></td><td></td>");
 		}
 
-		if (html)
+		if (mode == UG_HTML)
 			fprintf(fh, "</tr>\n");
-		else
+		else if (mode == UG_TEXT)
 			fprintf(fh, "\n");
 	}
 
-	if (html) {
+	if (mode == UG_HTML) {
 		fprintf(fh, "</table>\n");
 		fprintf(fh, "</body>\n");
 		fprintf(fh, "</html>\n");
+	}
+	else if (mode == UG_SQL) {
+		fprintf(fh, "COMMIT;\n");
 	}
 }
 
@@ -1596,12 +1660,28 @@ void help()
 #endif
 }
 
+ug_output_t text_to_mode(const std::string & mode)
+{
+	if (mode == "html")
+		return UG_HTML;
+
+	if (mode == "text")
+		return UG_TEXT;
+
+	if (mode == "sql")
+		return UG_SQL;
+
+	fprintf(stderr, "mode %s not understood\n\n", mode.c_str());
+
+	exit(1);
+}
+
 int main(int argc, char *argv[])
 {
 	std::string trace_file, output_file;
 	bool run_correlate = false;
 	bool print_trace = false;
-	bool is_html = false;
+	ug_output_t output_mode = UG_TEXT;
 	bool print_locking = false;
 
 	int c = 0;
@@ -1621,12 +1701,12 @@ int main(int argc, char *argv[])
 		else if (c == 'T') {
 			print_trace = true;
 
-			is_html = strcasecmp(optarg, "html") == 0;
+			output_mode = text_to_mode(optarg);
 		}
 		else if (c == 'Q') {
 			print_locking = true;
 
-			is_html = strcasecmp(optarg, "html") == 0;
+			output_mode = text_to_mode(optarg);
 		}
 		else if (c == 'h') {
 			help();
@@ -1669,9 +1749,9 @@ int main(int argc, char *argv[])
 	const uint64_t ug_n_records = get_json_int(meta, "ug_n_records");
 
 	if (print_locking)
-		emit_locks(fh, ug_data, ug_n_records, is_html);
+		emit_locks(fh, ug_data, ug_n_records, output_mode);
 	else if (print_trace)
-		emit_trace(fh, data, n_records, is_html);
+		emit_trace(fh, data, n_records, output_mode);
 	else {
 		put_html_header(fh, run_correlate);
 
